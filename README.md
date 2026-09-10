@@ -43,7 +43,9 @@ require explicit confirmation of the mapping. **View / change matrix…** displa
 the current matrix and opens a native file chooser for imports. Counts always
 use all events, including while editing.
 
-For headless analysis, `uv sync` omits Qt. Python 3.11+ is required. Distribution:
+For headless analysis, `uv sync` omits Qt. On minimal Linux installations, the
+desktop extra also needs the system libraries `libegl1`, `libopengl0`, and
+`libxkbcommon0` (Ubuntu package names). Python 3.11+ is required. Distribution:
 `agentflow-cytometry`; import and command: `agentflow`. This is not published on
 PyPI and is independent of unrelated packages named AgentFlow.
 
