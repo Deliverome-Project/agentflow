@@ -1,0 +1,25 @@
+# Agentflow's FlowKit copy
+
+Imported from upstream FlowKit tag 1.3.2, commit
+`f2159043b6a56e527d4baacf97490caf8354618e`. This directory contains the complete
+`src/flowkit` runtime tree and upstream LICENSE, not upstream Git history,
+test datasets, or documentation. Original per-file checksums are in UPSTREAM.json.
+
+Local changes at import:
+
+- Move the package under `agentflow._vendor.flowkit` to avoid shadowing upstream.
+- In `_resources/__init__.py`, resolve the XML schemas using `__package__` so
+  GatingML loads from this vendored package rather than a top-level `flowkit`.
+- Add LICENSE, UPSTREAM.json and this maintenance note.
+
+All numerical/gating logic is unchanged. Public access is
+`from agentflow import flowkit`. Keep the upstream version string unchanged;
+Agentflow's run record also fingerprints vendored Python and XSD content to
+identify our actual engine implementation.
+
+When customizing: update this log, preserve upstream notices, and add scientific
+regression tests. Do not run bulk formatting on upstream code. Review upstream
+changes against the recorded commit; imports should be deliberate commits, never
+an automatic replacement of this tree. Copy and review relevant upstream tests
+and fixtures before changing an algorithm. Do not imply upstream authors endorse
+our modifications. Build and test the wheel after resource or namespace changes.

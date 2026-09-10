@@ -11,7 +11,7 @@ import pandas as pd
 
 
 def flowkit():
-    import flowkit as fk
+    from ._vendor import flowkit as fk
 
     return fk
 

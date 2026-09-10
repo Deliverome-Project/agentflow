@@ -3,11 +3,12 @@ import json
 from types import SimpleNamespace
 
 import flowio
-import flowkit as fk
 import matplotlib
 import numpy as np
 import pandas as pd
 import pytest
+
+from agentflow import flowkit as fk
 
 matplotlib.use("Agg")
 

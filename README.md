@@ -152,5 +152,16 @@ protection, missing compensation, and editor save/cancel/conflict callbacks.
 These checks do not establish agreement with a particular laboratory's FlowJo
 analysis. Compare representative real files and approved gates before adoption.
 
-FlowKit is used as a dependency, not vendored or forked. See
-[FlowKit](https://github.com/whitews/FlowKit) for its source and documentation.
+FlowKit 1.3.2 is vendored at `src/agentflow/_vendor/flowkit`, retaining its BSD
+3-Clause license. Agentflow uses this editable copy, not an installed upstream
+FlowKit package. Use `from agentflow import flowkit` for its API. This namespace
+can coexist with upstream `import flowkit` in the same environment, but use
+agentflow's classes when passing objects into agentflow.
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+[vendoring notes](src/agentflow/_vendor/flowkit/AGENTFLOW.md) for provenance and
+local modifications. Runs record both upstream identity and a fingerprint of our
+vendored code/resources, so local engine changes remain traceable. FlowIO,
+FlowUtils, and the scientific/plotting dependencies remain external, resolved
+in `uv.lock`. Vendoring gives us control over our copy; original copyright and
+attribution remain with upstream authors.

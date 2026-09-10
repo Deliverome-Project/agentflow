@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 from .engine import digest, evaluate, load_recipe, prepare, save_recipe, summarize
+from .vendor_info import vendor_identity
 
 
 def run_batch(samples, recipe_path, output):
@@ -72,11 +73,11 @@ def run_batch(samples, recipe_path, output):
                     "recipe_sha256": hashlib.sha256(recipe_bytes).hexdigest(),
                     "samples_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
                     "python": platform.python_version(),
+                    "flowkit": vendor_identity(),
                     "versions": {
                         p: version(p)
                         for p in [
                             "agentflow-cytometry",
-                            "flowkit",
                             "flowio",
                             "flowutils",
                             "numpy",
