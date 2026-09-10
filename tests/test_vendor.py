@@ -28,3 +28,13 @@ def test_vendored_api_and_gatingml_resources():
     identity = vendor_identity()
     assert identity["upstream_version"] == "1.3.2"
     assert len(identity["source_sha256"]) == 64
+
+
+def test_schema_files_retain_upstream_bytes():
+    import hashlib
+    import json
+
+    root = Path(fk.__file__).parent
+    original = json.loads((root / "UPSTREAM.json").read_text())["original_files_sha256"]
+    for path in (root / "_resources").glob("*.xsd"):
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == original[path.relative_to(root).as_posix()]

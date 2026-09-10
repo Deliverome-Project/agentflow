@@ -23,3 +23,8 @@ changes against the recorded commit; imports should be deliberate commits, never
 an automatic replacement of this tree. Copy and review relevant upstream tests
 and fixtures before changing an algorithm. Do not imply upstream authors endorse
 our modifications. Build and test the wheel after resource or namespace changes.
+
+The three XSD schemas have their own embedded ISAC terms (read-only usage and
+free-of-charge distribution; modification reserved). Preserve them byte-for-byte,
+including whitespace and embedded notices. They are standards resources, not
+part of our freely editable Python implementation.

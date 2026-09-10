@@ -13,3 +13,11 @@ Our copy lives under `agentflow._vendor.flowkit`. See its `AGENTFLOW.md` for
 modifications and `UPSTREAM.json` for original file checksums. No upstream
 endorsement is implied. Other installed dependencies retain their own licenses;
 they are not vendored in this repository.
+
+## Gating-ML schemas bundled by FlowKit
+
+The three `_resources/*.xsd` files carry separate ISAC copyright notices, which
+remain embedded and unchanged. Their notices permit free-of-charge distribution
+and read-only usage, and reserve modification and other rights. They are not
+covered by a blanket claim that every bundled file may be modified under BSD.
+Keep these standard schemas byte-for-byte unchanged; customize our Python code.
