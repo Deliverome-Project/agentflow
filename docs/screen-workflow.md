@@ -207,3 +207,42 @@ anything reviewed automatically. Use **Review & next** when approving a gate.
 **Focus plot** hides the right-hand gallery to give the editable plot more room.
 Turn it off to restore the gallery. The focus setting and gallery mode are saved
 with other display preferences; neither changes population membership.
+
+## Open, import, save and rerun in the desktop
+
+Start with `agentflow gui`. **Open analysis folder** loads `recipe.json` and
+`samples.csv`; **Choose recipe and sample sheet** supports files stored separately.
+The launcher checks referenced FCS paths and reports errors before opening the
+editor. This is a JSON recipe/sample-sheet workflow, not the proposed YAML
+workspace implementation.
+
+**Import FCS files** creates a new analysis folder without copying or changing the
+source FCS files. Choose a new folder name and explicitly select embedded
+compensation or uncompensated analysis. Duplicate sample stems and incompatible
+inputs fail without publishing a partial analysis folder. Draft scatter and
+singlet gates use the first sample; review them across the full sample set and
+assign fluorescence detectors explicitly after opening. Import currently requires
+FSC-A and SSC-A. Use the sample sheet for group colors, plate/well and control roles.
+
+Inside the workbench, the **Analysis** menu opens another analysis, saves without
+closing, or saves and runs all samples. **Save and run all samples** writes the
+current recipe, asks for a results location, and creates a new `run-NNN` directory.
+The existing CLI executes in a separate process; edits are disabled while it runs.
+The generated HTML report opens when complete. Failures restore the editor and
+show the error. Runs cannot currently be cancelled in the GUI. The exported
+`samples.csv` captures the loaded sample metadata; changes to the original sheet
+require reopening the analysis.
+
+Later edits after saving become unsaved again and trigger the normal close prompt.
+**Save & close** remains available. The analysis folder can be reopened through
+the launcher, and the same recipe/sample sheet can be rerun through the CLI.
+
+Plot appearance settings are collapsed by default, and the central panel scrolls
+when needed so plots retain readable axes. Narrow galleries use one column.
+**New population** defaults to a child of the selected population; choose Sibling
+or Choose parent explicitly for another relationship. New populations are shared
+recipe operations even when sample-only geometry editing is selected.
+
+After calculating compensation, **Review before / after** opens the exported
+control diagnostics inside the app. Select a detector to switch controls; scroll
+for the full-resolution image. Applying the draft matrix is still a separate action.

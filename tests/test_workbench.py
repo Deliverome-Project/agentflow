@@ -265,3 +265,127 @@ def test_focus_plot_enlarges_canvas_and_saves_view(window):
     window.save()
     saved = json.loads(window.state.path.read_text())
     assert saved["display"]["gallery_mode"] == "Ancestry"
+
+
+def test_small_window_keeps_plot_and_labels_separate(window):
+    from PySide6.QtTest import QTest
+
+    window.resize(1180, 800)
+    window.gallery_mode.setCurrentText("Ancestry")
+    QTest.qWait(100)
+    W.QApplication.processEvents()
+    assert window.canvas.height() >= 260
+    assert window.canvas.geometry().bottom() < window.help.geometry().top()
+    assert all(ax.get_subplotspec().get_gridspec().ncols == 1 for ax in window.gallery_axes)
+    assert not window.parent_button.isHidden()
+
+
+def test_save_continue_then_edit_requires_save_again(window):
+    assert window.save_changes(close=False)
+    assert window.isVisible()
+    assert not window.state.dirty
+    window.upper.setText("2500")
+    window.apply_bounds()
+    assert window.state.dirty
+    assert not window.state.saved
+
+
+def test_child_and_sibling_creation_are_explicit(window):
+    def inspect():
+        dialog = W.QApplication.activeModalWidget()
+        relationship = dialog.findChild(W.QComboBox, "population_relationship")
+        parent = dialog.findChild(W.QComboBox, "parent_population")
+        assert dialog.findChild(W.QComboBox, "gate_kind").currentText() == "range"
+        assert parent.currentText() == "live"
+        assert not parent.isEnabled()
+        relationship.setCurrentIndex(1)
+        assert parent.currentText() == "singlets"
+        relationship.setCurrentIndex(2)
+        assert parent.isEnabled()
+        dialog.reject()
+
+    QtCore.QTimer.singleShot(0, inspect)
+    window.new_population()
+
+
+def test_background_analysis_saved_recipe_matches_gui(window, tmp_path, monkeypatch):
+    import pandas as pd
+    from PySide6 import QtGui
+    from PySide6.QtTest import QTest
+
+    monkeypatch.setattr(QtGui.QDesktopServices, "openUrl", lambda url: True)
+    window.upper.setText("2500")
+    window.apply_bounds()
+    assert window.save_changes(close=False)
+    expected = window.state.counts()["live"]
+    window.start_analysis(tmp_path / "run")
+    for _ in range(600):
+        QTest.qWait(50)
+        if not window.analysis_job.isRunning() and window.centralWidget().isEnabled():
+            break
+    assert not window.analysis_job.isRunning()
+    assert window.centralWidget().isEnabled()
+    assert window.analysis_error is None
+    table = pd.read_csv(tmp_path / "run/summary.csv")
+    assert table.loc[(table.sample_id == "DUMMY-1") & (table.gate == "live"), "count"].iloc[0] == expected
+
+
+def test_launcher_reopens_saved_analysis(window, demo):
+    from agentflow.launcher import Launcher
+
+    assert window.save_changes(close=False)
+    launcher = Launcher()
+    launcher.select(window.state.path, demo / "workflow/samples.csv")
+    assert launcher.selection[0] == window.state.path
+    assert len(launcher.selection[1]) == 3
+
+
+def test_compensation_diagnostics_open_inside_app(window, demo):
+    from agentflow.compensation_wizard import CompensationWizard
+
+    wizard = CompensationWizard(window, [])
+    wizard.spec = json.loads((demo / "compensation.json").read_text())
+    # Existing demo diagnostics have the same files as exported review bundles.
+    wizard.review_directory = demo
+    source = demo / "control-diagnostics"
+    # Choose a tiny local bundle without changing the source demo.
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as folder:
+        shutil.copytree(source, Path(folder) / "diagnostics")
+        wizard.review_directory = Path(folder)
+        seen = []
+
+        def inspect():
+            dialog = W.QApplication.activeModalWidget()
+            choice = dialog.findChild(W.QComboBox)
+            assert choice.count() == 4
+            choice.setCurrentIndex(1)
+            picture = dialog.findChild(W.QScrollArea).widget()
+            assert not picture.pixmap().isNull()
+            seen.append(True)
+            dialog.accept()
+
+        QtCore.QTimer.singleShot(0, inspect)
+        wizard.show_diagnostics()
+        assert seen
+    wizard.reject()
+
+
+def test_failed_analysis_restores_editor(window, tmp_path, monkeypatch):
+    from PySide6.QtTest import QTest
+
+    assert window.save_changes(close=False)
+    # Existing output is rejected by the same CLI safeguard.
+    output = tmp_path / "existing"
+    output.mkdir()
+    window.start_analysis(output)
+    for _ in range(600):
+        QTest.qWait(50)
+        if window.centralWidget().isEnabled():
+            break
+    assert window.centralWidget().isEnabled()
+    assert "already exists" in window.analysis_error
+    assert list(output.iterdir()) == []

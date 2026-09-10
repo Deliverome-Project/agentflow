@@ -4,10 +4,22 @@ An independent Python package for reproducible flow screens and few-channel
 experiments. It includes an editable copy of FlowKit, a CLI for batch analyses,
 and a Matplotlib desktop editor for human gate review.
 
-**Version 0.2 is a team-evaluation release.** Default gates are draft drawing aids.
+**Version 0.7 is a team-evaluation release.** Default gates are draft drawing aids.
 The example workflow is explicitly labelled **DUMMY / EXAMPLE — NOT VALIDATED**.
 A real laboratory workflow still needs approved controls, detector assignments,
 and gates. Unknown and unacquired channels are never silently fabricated.
+
+## Open the desktop
+
+```sh
+uv sync --extra gui
+uv run agentflow gui
+```
+
+Open an existing analysis folder or import FCS files. The Analysis menu saves,
+opens analyses, and runs the loaded sample set to a new report directory. Source
+FCS files remain unchanged. The interface supports JSON recipes/sample sheets;
+YAML workspaces remain planned. Review all draft gates before interpreting results.
 
 ## Start with the complete synthetic example
 

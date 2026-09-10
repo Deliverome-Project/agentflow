@@ -22,6 +22,9 @@ CLI / Python API              Qt + Matplotlib ScreenWindow
 | `engine.py` | Sample preparation, native FlowKit compilation/execution, statistics |
 | `editor_state.py` | Toolkit-independent transactions, validation, history, review invalidation and atomic saving |
 | `desktop.py` | Base single-sample native controls and Matplotlib selectors |
+| `projects.py` | Atomic FCS import into a recipe/sample-sheet folder |
+| `launcher.py` | Optional native analysis opening/import entry point |
+| `desktop_jobs.py` | Isolated CLI process for GUI-triggered batch analysis |
 | `population_tree.py` | Native collapsible hierarchy with stable recipe-order navigation |
 | `workbench.py` | Multi-sample navigation, population/sample galleries, plate map and overlays |
 | `samples.py` | Sample-sheet validation, group colors, per-sample matrices and bounded preview cache |

@@ -6,11 +6,17 @@ from pathlib import Path
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
+from PySide6 import QtGui
 from PySide6 import QtWidgets as W
 
 from . import flowkit
 from .control_review import export_control_review, resolve_config
 from .desktop import button, label
+
+
+class ControlFilenameDelegate(W.QStyledItemDelegate):
+    def displayText(self, value, locale):
+        return Path(str(value)).name if value else "Choose a control file"
 
 
 class CompensationWizard(W.QDialog):
@@ -43,6 +49,7 @@ class CompensationWizard(W.QDialog):
         )
         self.table.horizontalHeader().setSectionResizeMode(W.QHeaderView.Stretch)
         self.table.setMaximumHeight(190)
+        self.table.setItemDelegateForColumn(1, ControlFilenameDelegate(self.table))
         self.table.itemSelectionChanged.connect(self.preview)
         self.table.itemChanged.connect(self.changed)
         layout.addWidget(self.table)
@@ -75,6 +82,9 @@ class CompensationWizard(W.QDialog):
         layout.addWidget(self.cleanup)
         bottom = W.QHBoxLayout()
         bottom.addWidget(button("Calculate & export review…", self.calculate))
+        self.diagnostics_button = button("Review before / after…", self.show_diagnostics)
+        self.diagnostics_button.setEnabled(False)
+        bottom.addWidget(self.diagnostics_button)
         self.apply_button = button("Apply draft matrix", self.accept)
         self.apply_button.setObjectName("primary")
         self.apply_button.setEnabled(False)
@@ -101,6 +111,7 @@ class CompensationWizard(W.QDialog):
         if self.loading:
             return
         self.spec = None
+        self.diagnostics_button.setEnabled(False)
         self.apply_button.setEnabled(False)
         self.preview()
 
@@ -115,6 +126,7 @@ class CompensationWizard(W.QDialog):
 
     def set_config(self, config):
         self.spec = None
+        self.diagnostics_button.setEnabled(False)
         self.apply_button.setEnabled(False)
         self.loading = True
         try:
@@ -125,6 +137,7 @@ class CompensationWizard(W.QDialog):
                 row = self.table.rowCount() - 1
                 for col, key in enumerate(["fcs_path", "negative_max", "positive_min"], 1):
                     self.table.item(row, col).setText(str(control[key]))
+                    self.table.item(row, col).setToolTip(str(control[key]))
             self.minimum.setValue(config.get("min_events", 50))
             self.cleanup.setText(
                 "Cleanup: "
@@ -145,6 +158,7 @@ class CompensationWizard(W.QDialog):
         path, _ = W.QFileDialog.getOpenFileName(self, "Single-stain control", "", "FCS (*.fcs *.FCS)")
         if path:
             self.table.item(row, 1).setText(path)
+            self.table.item(row, 1).setToolTip(path)
 
     def configuration(self):
         controls = []
@@ -219,6 +233,36 @@ class CompensationWizard(W.QDialog):
                 f"{event.xdata:.10g}"
             )
 
+    def show_diagnostics(self):
+        dialog = W.QDialog(self)
+        dialog.setWindowTitle("Single-stain controls · before and after compensation")
+        dialog.resize(1050, 820)
+        layout = W.QVBoxLayout(dialog)
+        layout.addWidget(
+            label("Descriptive control QC · inspect spillover before applying the draft matrix", "muted")
+        )
+        choice = W.QComboBox()
+        files = sorted((self.review_directory / "diagnostics").glob("*.png"))
+        choice.addItems([f"{i + 1}. {self.spec['detectors'][i]}" for i in range(len(files))])
+        layout.addWidget(choice)
+        scroll = W.QScrollArea()
+        picture = W.QLabel()
+        scroll.setWidget(picture)
+        layout.addWidget(scroll, 1)
+
+        def display(index):
+            if index >= 0 and files:
+                pixmap = QtGui.QPixmap(str(files[index]))
+                picture.setPixmap(pixmap)
+                picture.resize(pixmap.size())
+
+        choice.currentIndexChanged.connect(display)
+        display(0)
+        if not files:
+            layout.addWidget(label("No secondary detector pairs in this matrix."))
+        layout.addWidget(button("Done", dialog.accept))
+        dialog.exec()
+
     def calculate(self):
         try:
             config = self.configuration()
@@ -226,6 +270,8 @@ class CompensationWizard(W.QDialog):
             if not path:
                 return
             self.spec = export_control_review(config, path)
+            self.review_directory = Path(path)
+            self.diagnostics_button.setEnabled(True)
             self.apply_button.setEnabled(True)
             self.status.setText(
                 f"Draft matrix exported to {path}. Inspect matrix.png and diagnostics before use. "
@@ -252,6 +298,7 @@ class CompensationWizard(W.QDialog):
             self.canvas.draw_idle()
             self.ax = None
         except (ValueError, OSError, KeyError, TypeError) as error:
+            self.diagnostics_button.setEnabled(False)
             self.spec = None
             self.apply_button.setEnabled(False)
             self.status.setText(f"Not calculated: {error}")

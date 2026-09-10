@@ -105,12 +105,22 @@ class GateWindow(W.QMainWindow):
         main = W.QVBoxLayout()
         main.setSpacing(10)
         self.main_layout = main
-        body.addLayout(main, 1)
+        main_widget = W.QWidget(objectName="analysis_panel")
+        main_widget.setLayout(main)
+        main_scroll = W.QScrollArea()
+        main_scroll.setWidgetResizable(True)
+        main_scroll.setFrameShape(W.QFrame.NoFrame)
+        main_scroll.setWidget(main_widget)
+        main_scroll.setMinimumWidth(420)
+        self.main_scroll = main_scroll
+        body.addWidget(main_scroll, 1)
         self.title = label("", "title")
         self.subtitle = label("", "muted")
         main.addWidget(self.title)
         main.addWidget(self.subtitle)
         self.stack = W.QStackedWidget()
+        self.stack.setMinimumHeight(380)
+        self.stack.setSizePolicy(W.QSizePolicy.Expanding, W.QSizePolicy.Ignored)
         main.addWidget(self.stack, 1)
         plot_card = W.QFrame(objectName="card")
         card_layout = W.QVBoxLayout(plot_card)
@@ -127,15 +137,17 @@ class GateWindow(W.QMainWindow):
         self.review_badge = label("", "badge")
         tools.addWidget(self.review_badge)
         card_layout.addLayout(tools)
-        self.figure = Figure(figsize=(8, 5), facecolor="white")
+        self.figure = Figure(figsize=(8, 5), facecolor="white", layout="constrained")
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.ax = self.figure.add_subplot(111)
-        self.figure.subplots_adjust(left=0.12, right=0.97, bottom=0.15, top=0.94)
+        self.canvas.setMinimumHeight(260)
+        self.canvas.setSizePolicy(W.QSizePolicy.Expanding, W.QSizePolicy.Ignored)
         self.toolbar = NavigationToolbar2QT(self.canvas, self)
         self.toolbar.hide()
         card_layout.addWidget(self.canvas, 1)
         self.help = label("", "muted")
         self.help.setWordWrap(True)
+        self.help.setMaximumHeight(44)
         card_layout.addWidget(self.help)
         self.stack.addWidget(plot_card)
         pending = W.QFrame(objectName="card")
@@ -604,7 +616,7 @@ class GateWindow(W.QMainWindow):
                 self.flush_bounds()
             except (ValueError, TypeError):
                 pending_invalid = True
-        if (self.state.dirty or pending_invalid) and not self.state.saved and not self.discarding:
+        if (self.state.dirty or pending_invalid) and not self.discarding:
             answer = W.QMessageBox.question(
                 self,
                 "Unsaved gate edits",

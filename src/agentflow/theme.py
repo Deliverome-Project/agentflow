@@ -38,7 +38,7 @@ def setup_plots():
 def desktop_style():
     return f"""
     QWidget {{ font-family: "Manrope"; font-size: 13px; color: {INK}; }}
-    QMainWindow, QDialog, QWidget#root {{ background: {BG}; }}
+    QMainWindow, QDialog, QWidget#root, QWidget#analysis_panel {{ background: {BG}; }}
     QLabel {{ background: transparent; }}
     QLabel#brand {{ font-family: "Playfair Display"; font-size: 32px; color: {BERRY}; }}
     QLabel#title {{ font-family: "Playfair Display"; font-size: 30px; }}

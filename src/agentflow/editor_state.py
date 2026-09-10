@@ -37,6 +37,7 @@ class EditorState:
         self.history.append(copy.deepcopy(self.recipe))
         self.future.clear()
         self.recipe = candidate
+        self.saved = False
         if reprepare:
             self.prepared = prepared
 
@@ -116,6 +117,7 @@ class EditorState:
             prepared = prepare(self.prepared.sample, candidate)
             target.append(copy.deepcopy(self.recipe))
             self.recipe = source.pop()
+            self.saved = False
             self.prepared = prepared
 
     def counts(self):

@@ -2,11 +2,12 @@
 
 import copy
 import re
+from pathlib import Path
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 from PySide6 import QtWidgets as W
 
 from .desktop import TITLES, GateWindow, button, label
@@ -29,6 +30,13 @@ class ScreenWindow(GateWindow):
         self.resize(1540, 960)
         self.setMinimumSize(1180, 800)
         top = W.QHBoxLayout()
+        analysis_menu = W.QMenu(self)
+        analysis_menu.addAction("Open analysis…", self.open_analysis)
+        analysis_menu.addAction("Save and keep editing", lambda: self.save_changes(close=False))
+        analysis_menu.addAction("Save and run all samples…", self.run_analysis)
+        analysis_button = W.QPushButton("Analysis")
+        analysis_button.setMenu(analysis_menu)
+        top.addWidget(analysis_button)
         top.addWidget(label("SAMPLE"))
         self.sample_choice = W.QComboBox()
         for r in records:
@@ -74,6 +82,14 @@ class ScreenWindow(GateWindow):
         scopes.addWidget(button("Pinned controls…", self.pin_dialog))
         scopes.addWidget(button("Calculate compensation…", self.compensation_wizard))
         self.root_layout.insertLayout(3, scopes)
+        display_panel = W.QWidget()
+        display_layout = W.QVBoxLayout(display_panel)
+        display_layout.setContentsMargins(0, 0, 0, 0)
+        display_panel.hide()
+        self.display_panel = display_panel
+        display_toggle = W.QCheckBox("Plot appearance && axes")
+        display_toggle.toggled.connect(display_panel.setVisible)
+        self.main_layout.insertWidget(2, display_toggle)
         settings = W.QHBoxLayout()
         self.plot_type = W.QComboBox()
         self.plot_type.addItems(["Scatter", "Density", "Contour"])
@@ -100,7 +116,7 @@ class ScreenWindow(GateWindow):
         self.normalization.addItems(["Event counts", "Unit area", "% of peak"])
         self.normalization.currentIndexChanged.connect(self.redraw)
         settings.addWidget(self.normalization)
-        self.main_layout.insertLayout(2, settings)
+        display_layout.addLayout(settings)
         axes = W.QHBoxLayout()
         axes.addWidget(label("Display axes"))
         self.x_scale, self.y_scale = W.QComboBox(), W.QComboBox()
@@ -112,9 +128,14 @@ class ScreenWindow(GateWindow):
         axes.addWidget(button("Use gating axes", self.gating_axes))
         self.parent_button = button("↑ Parent", self.select_parent)
         self.parent_button.setToolTip("Select the upstream population")
-        axes.addWidget(self.parent_button)
+        self.main_layout.takeAt(0)
+        heading = W.QHBoxLayout()
+        heading.addWidget(self.title, 1)
+        heading.addWidget(self.parent_button)
+        self.main_layout.insertLayout(0, heading)
         axes.addStretch()
-        self.main_layout.insertLayout(3, axes)
+        display_layout.addLayout(axes)
+        self.main_layout.insertWidget(3, display_panel)
         gallery_panel = W.QWidget()
         self.gallery_panel = gallery_panel
         gallery_panel.setMinimumWidth(310)
@@ -167,6 +188,65 @@ class ScreenWindow(GateWindow):
         self.gallery_mode.setCurrentText(display.get("gallery_mode", "All populations"))
         self.focus_plot.setChecked(display.get("focus_plot", False))
         self.show_gate(self.active_name)
+
+    def open_analysis(self):
+        from .engine import load_recipe
+        from .launcher import Launcher
+
+        dialog = Launcher()
+        if dialog.exec() == W.QDialog.Accepted:
+            path, records = dialog.selection
+            window = ScreenWindow(records, load_recipe(path), None, path)
+            self.open_windows = getattr(self, "open_windows", []) + [window]
+            window.show()
+
+    def run_analysis(self):
+        parent = W.QFileDialog.getExistingDirectory(
+            self, "Choose results location · a new run folder will be created"
+        )
+        if not parent or not self.save_changes(close=False):
+            return
+        index = 1
+        while (Path(parent) / f"run-{index:03d}").exists():
+            index += 1
+        self.start_analysis(Path(parent) / f"run-{index:03d}")
+
+    def start_analysis(self, output):
+        from .desktop_jobs import AnalysisJob
+
+        self.analysis_job = AnalysisJob(copy.deepcopy(self.records), self.state.path, output, self)
+        self.analysis_progress = W.QProgressDialog("Analyzing all samples…", "", 0, 0, self)
+        self.analysis_progress.setCancelButton(None)
+        self.analysis_progress.setWindowModality(QtCore.Qt.WindowModal)
+        self.analysis_progress.setWindowTitle("Running saved analysis")
+        self.centralWidget().setEnabled(False)
+        self.analysis_error = None
+        self.analysis_report = None
+        self.analysis_job.completed.connect(lambda path: setattr(self, "analysis_report", path))
+        self.analysis_job.failed.connect(lambda message: setattr(self, "analysis_error", message))
+        self.analysis_job.finished.connect(self.finish_analysis)
+        self.analysis_progress.show()
+        self.analysis_job.start()
+
+    def finish_analysis(self):
+        self.analysis_progress.close()
+        self.centralWidget().setEnabled(True)
+        if self.analysis_error:
+            self.message.setText(f"Analysis failed: {self.analysis_error}")
+        else:
+            self.message.setText(f"Analysis complete: {self.analysis_report}")
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(self.analysis_report))
+
+    def closeEvent(self, event):
+        if getattr(self, "analysis_job", None) is not None and self.analysis_job.isRunning():
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, "ready", False):
+            self.request_gallery()
 
     def toggle_focus(self, checked):
         if not self.ready:
@@ -425,6 +505,7 @@ class ScreenWindow(GateWindow):
                 self.help.text()
                 + " Scroll to zoom. Scatter displays up to 20,000 events per sample; counts use all events."
             )
+        self.help.setToolTip(self.help.text())
         self.edit_button.setEnabled(not preview)
         self.bounds_widget.setEnabled(not preview)
         self.y_scale.setEnabled(len(gate["channels"]) == 2)
@@ -486,7 +567,9 @@ class ScreenWindow(GateWindow):
         all_items = items
         items = items[start : start + 12]
         n = len(items)
-        self.gallery_canvas.setMinimumHeight(max(400, ((n + 1) // 2) * 200))
+        columns = 1 if self.gallery_canvas.width() < 420 else 2
+        rows = max(1, (n + columns - 1) // columns)
+        self.gallery_canvas.setMinimumHeight(rows * 260)
         shared_limits = None
         active = self.state.gate(self.active_name)
         if compare and active:
@@ -508,7 +591,7 @@ class ScreenWindow(GateWindow):
             gate = next(
                 g for g in sample_recipe(self.state.recipe, record)["gates"] if g["name"] == gate["name"]
             )
-            ax = self.gallery_figure.add_subplot(max(1, (n + 1) // 2), 2, i + 1)
+            ax = self.gallery_figure.add_subplot(rows, columns, i + 1)
             self.gallery_axes[ax] = ("sample", record["sample_id"]) if compare else ("gate", gate["name"])
             try:
                 prepared, masks = self.session.get(record, self.state.recipe)
@@ -656,6 +739,9 @@ class ScreenWindow(GateWindow):
             self.selector.set_active(False)
 
     def save(self):
+        self.save_changes(close=True)
+
+    def save_changes(self, close=False):
         try:
             self.flush_bounds()
             candidate = copy.deepcopy(self.state.recipe)
@@ -672,9 +758,13 @@ class ScreenWindow(GateWindow):
             }
             self.state.apply(candidate)
             self.state.save()
-            self.close()
+            self.message.setText("Saved. You can continue editing or run this analysis.")
+            if close:
+                self.close()
+            return True
         except (ValueError, OSError, TypeError) as error:
             self.message.setText(f"Not saved: {error}")
+            return False
 
     def detectors_dialog(self):
         dialog = W.QDialog(self)
@@ -746,7 +836,21 @@ class ScreenWindow(GateWindow):
         x.setCurrentText(active["channels"][0])
         y.setCurrentText(active["channels"][-1])
         parent.addItems(["root"] + [g["name"] for g in self.state.recipe["gates"]])
-        parent.setCurrentText(active["parent"])
+        relationship = W.QComboBox()
+        relationship.setObjectName("population_relationship")
+        relationship.addItems(
+            ["Child of selected population", "Sibling of selected population", "Choose parent"]
+        )
+        parent.setCurrentText(active["name"])
+        parent.setEnabled(False)
+
+        def choose_relationship(index):
+            parent.setEnabled(index == 2)
+            if index != 2:
+                parent.setCurrentText(active["name"] if index == 0 else active["parent"])
+
+        relationship.currentIndexChanged.connect(choose_relationship)
+        form.addRow("Create as", relationship)
         kind.addItems(["rectangle", "polygon", "range", "boolean"])
         for title, field in [
             ("Name", name),
@@ -774,6 +878,8 @@ class ScreenWindow(GateWindow):
         kind.currentTextChanged.connect(
             lambda text: [form.setRowVisible(field, text == "boolean") for field in [left, right, operation]]
         )
+        kind.currentTextChanged.connect(lambda text: form.setRowVisible(y, text != "range"))
+        kind.setCurrentText("range" if len(active["channels"]) == 1 else "rectangle")
         message = label("Choose channels and a parent, then reshape the draft gate in the plot.", "muted")
         message.setWordWrap(True)
         form.addRow(message)
