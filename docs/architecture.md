@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-CLI / Python API              Matplotlib GateEditor
+CLI / Python API              Qt + Matplotlib GateWindow
         |                      | recipe edits only
         +---------- recipes ---+
                        |
@@ -20,7 +20,10 @@ CLI / Python API              Matplotlib GateEditor
 | `compensation.py` | Labelled matrix validation/import/application; independent control estimator |
 | `workflow.py` | Draft gates, explicit role mappings, unavailable steps, review invalidation |
 | `engine.py` | Sample preparation, native FlowKit compilation/execution, statistics |
-| `editor.py` | Temporary editable recipe, gate navigation, selectors, undo/redo, save/cancel |
+| `editor_state.py` | Toolkit-independent transactions, validation, history, review invalidation and atomic saving |
+| `desktop.py` | Native Qt navigation/forms/dialogs and Matplotlib selectors; optional CLI editor |
+| `theme.py`, `assets/fonts/` | Deliverome tokens and bundled Manrope/Playfair Display fonts and licenses |
+| `editor.py` | Legacy Matplotlib-only editor retained for compatibility; not used by the CLI |
 | `batch.py` | Sample manifests, sequential execution, staging, reproducible run records |
 | `plots.py`, `quality.py`, `reporting.py` | Headless figures, acquisition flags, escaped HTML report |
 | `demo.py` | Seeded synthetic full workflow and controls |

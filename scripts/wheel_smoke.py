@@ -22,3 +22,11 @@ np.testing.assert_array_equal(restored.gate_sample(sample).get_gate_membership("
 assert (Path(fk.__file__).parent / "LICENSE").exists()
 assert vendor_identity()["upstream_version"] == "1.3.2"
 print("Installed wheel: vendored imports, XML resources, license and provenance passed.")
+
+from agentflow.theme import ASSETS, setup_plots
+
+assert (ASSETS / "Manrope-OFL.txt").is_file()
+assert (ASSETS / "PlayfairDisplay-OFL.txt").is_file()
+setup_plots()
+assert importlib.util.find_spec("PySide6") is None
+print("Offline fonts and headless installation passed.")

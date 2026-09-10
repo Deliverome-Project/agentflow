@@ -97,15 +97,11 @@ def open_editor(args):
         recipe["gates"].append(gate)
     validate(recipe)
     prepared = prepare(args.sample, recipe)
-    import matplotlib
+    from .desktop import run_editor
 
-    matplotlib.use("QtAgg")
-    from .editor import GateEditor
-
-    editor = GateEditor(prepared, recipe, args.gate, path)
-    editor.plt.show(block=True)
-    print(json.dumps({"status": "saved" if editor.saved else "cancelled", "recipe": str(path)}))
-    return 0 if editor.saved else 2
+    saved = run_editor(prepared, recipe, args.gate, path)
+    print(json.dumps({"status": "saved" if saved else "cancelled", "recipe": str(path)}))
+    return 0 if saved else 2
 
 
 def main(argv=None):
