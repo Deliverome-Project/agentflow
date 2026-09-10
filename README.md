@@ -26,15 +26,32 @@ contains three screen samples and four single-stain controls generated from know
 signals/spillover. It exercises **FSC/SSC → singlets → live → GFP, mScarlet, Cy5**.
 The fluorescence gates are parallel children of live cells, not a serial chain.
 
-In the editor, choose a gate on the left. Drag polygon/rectangle handles or a
-histogram span. Histogram **Lower/Upper** fields accept `none` for an unbounded
-side; click **Set bounds** to apply typed changes. Use **Undo/Redo** and **Mark
-gate reviewed** as needed. Changing a parent invalidates its descendants' review
-status. **Save & Close** saves the whole recipe and returns to the CLI. Closing
-the window or Cancel discards all unsaved changes. Missing channel roles have
-an explanatory panel and an explicit detector-assignment field.
+The desktop workbench uses **Manrope and Playfair Display**, native Qt controls
+and Matplotlib plots. Open a screen with:
 
-For headless analysis, `uv sync` omits Qt. Python 3.11+ is required. Distribution:
+```bash
+agentflow edit --samples local-examples/synthetic/workflow/samples.csv \
+  --recipe local-examples/synthetic/workflow/recipe.json --gate live
+```
+
+See several populations at once in the clickable gallery, compare samples with
+common axes, or click a plate well to select its sample. The main plot supports
+scatter, density, contours and group-colored overlays. Detector names stay visible;
+the Detectors dialog lists acquired detectors, marker annotations and dye roles.
+Point size, opacity, scroll zoom and larger gate handles improve direct editing.
+Histogram threshold fields use signal units matching the axes. Display previews
+include linear/asinh/logicle; gate counts remain unchanged by view settings.
+
+**Review & next**, undo/redo, and **Save & close** work across the shared recipe.
+Close prompts for unsaved gate edits; external recipe changes are never overwritten.
+The synthetic demo includes a clearly labelled dummy live/dead population on BV1-A.
+
+[Screen workflow, sample-sheet schema, plotting behavior and plate summaries](docs/screen-workflow.md)
+include reproducible commands and current limitations.
+
+For headless analysis, `uv sync` omits Qt. On minimal Linux installations, the
+desktop extra also needs the system libraries `libegl1`, `libopengl0`, and
+`libxkbcommon0` (Ubuntu package names). Python 3.11+ is required. Distribution:
 `agentflow-cytometry`; import and command: `agentflow`. This is not published on
 PyPI and is independent of unrelated packages named AgentFlow.
 
@@ -114,10 +131,12 @@ bright unsaturated controls, and an optional uncompensated cleanup recipe.
 The output contains thresholds, median values, counts, and control fingerprints,
 plus coefficient and before/after control plots. Inspect these before use; this
 is not a claim of equivalence to FlowJo AutoSpill or Cytoflow's regression estimator.
-See [compensation details](docs/compensation.md).
+The desktop **Calculate compensation…** dialog lets you assign single-stain files,
+inspect histograms and adjust raw-signal thresholds. It exports the same estimator
+results with control evidence and before/after plots. See [compensation details](docs/compensation.md).
 
 Load a matrix into a recipe with `init --matrix`, by editing its `compensation`
-object, or via the editor's **Matrix file → Load compensation** controls. Loading
+object, or via the editor's **View / change matrix… → Import matrix…** controls. Loading
 compensation invalidates all gate review flags. It does not silently move old
 vertices to a new signal space.
 
@@ -149,7 +168,8 @@ reviewed revision; nothing needs copying into deliverome-analysis.
 `agentflow validate recipe.json` checks a recipe. `agentflow export-gml sample.fcs
 --recipe recipe.json --out gates.xml` exports gates, transforms, and resolved
 compensation. Application notes, example labels and review flags are not part of
-GatingML; preserve the JSON as the complete agentflow record. Agents can use all
+GatingML; preserve the JSON as the complete agentflow record. Recipes with sample
+exceptions require `--sample-id ID` or `--shared-template` when exporting. Agents can use all
 CLI commands except the optional desktop editor without a display.
 
 ## Development and ownership
@@ -173,3 +193,7 @@ remain external and locked. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 See [the roadmap](docs/roadmap.md) for prioritized FlowJo-style features; this
 release does not claim a complete FlowJo replacement.
+
+The [workspace feature design](docs/design/flowjo-workflows.md) translates the
+FlowJo basic tutorial into proposed simpler workflows and shared GUI, CLI, Python
+and YAML interfaces. It distinguishes current functionality from planned work.

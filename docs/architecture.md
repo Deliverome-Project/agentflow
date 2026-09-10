@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-CLI / Python API              Matplotlib GateEditor
+CLI / Python API              Qt + Matplotlib ScreenWindow
         |                      | recipe edits only
         +---------- recipes ---+
                        |
@@ -20,7 +20,15 @@ CLI / Python API              Matplotlib GateEditor
 | `compensation.py` | Labelled matrix validation/import/application; independent control estimator |
 | `workflow.py` | Draft gates, explicit role mappings, unavailable steps, review invalidation |
 | `engine.py` | Sample preparation, native FlowKit compilation/execution, statistics |
-| `editor.py` | Temporary editable recipe, gate navigation, selectors, undo/redo, save/cancel |
+| `editor_state.py` | Toolkit-independent transactions, validation, history, review invalidation and atomic saving |
+| `desktop.py` | Base single-sample native controls and Matplotlib selectors |
+| `workbench.py` | Multi-sample navigation, population/sample galleries, plate map and overlays |
+| `samples.py` | Sample-sheet validation, group colors, per-sample matrices and bounded preview cache |
+| `plot_views.py` | Shared scatter/density/histogram rendering, original-unit ticks and reversible display axes |
+| `screening.py` | Explicit control normalization, plate summaries and well-level descriptive aggregates |
+| `cache.py` | Verified, content-addressed reuse of identical batch outputs |
+| `theme.py`, `assets/fonts/` | Deliverome tokens and bundled Manrope/Playfair Display fonts and licenses |
+| `editor.py` | Legacy Matplotlib-only editor retained for compatibility; not used by the CLI |
 | `batch.py` | Sample manifests, sequential execution, staging, reproducible run records |
 | `plots.py`, `quality.py`, `reporting.py` | Headless figures, acquisition flags, escaped HTML report |
 | `demo.py` | Seeded synthetic full workflow and controls |
@@ -46,3 +54,9 @@ Matplotlib is constrained below 3.11 because its 3.11 TextBox resize callback
 assumes mouse-event fields on a ResizeEvent. The native desktop smoke check
 exposed this; a synthetic resize-event test now guards it. Re-evaluate the bound
 when upstream fixes that callback and the GUI suite passes against the new release.
+
+`overrides.py` validates restricted per-sample geometry/review patches and resolves
+effective recipes; `samples.py` applies these before both preview and batch evaluation.
+`control_review.py` publishes atomic compensation review bundles using the headless
+estimator. `compensation_wizard.py` supplies optional Qt control assignment/threshold
+review and never implements a separate compensation formula.

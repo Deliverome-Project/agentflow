@@ -70,6 +70,11 @@ def make_demo(output):
                 "fcs_path": str(out / filename),
                 "well": f"A0{i + 1}",
                 "condition": ["control", "low", "high"][i],
+                "group": ["Negative control", "Low expression", "High expression"][i],
+                "color": ["#3d6b60", "#5848a8", "#922038"][i],
+                "plate": "DUMMY-PLATE-1",
+                "replicate": "1",
+                "control_role": ["negative", "sample", "positive"][i],
                 "experiment": "DUMMY / SYNTHETIC EXAMPLE",
             }
         )
@@ -80,6 +85,23 @@ def make_demo(output):
         True,
         matrix_path=out / "compensation.json",
     )
+    # Deliberate demo boundaries separate the simulated populations. Never reuse
+    # them as biological thresholds. All remain visibly draft/example.
+    recipe_path = out / "workflow/recipe.json"
+    recipe = json.loads(recipe_path.read_text())
+    for gate in recipe["gates"]:
+        if gate["name"] in ("live", "gfp", "mscarlet", "cy5"):
+            threshold = float(np.arcsinh(5000 / 150))
+            gate["bounds"] = [None, threshold] if gate["name"] == "live" else [threshold, None]
+            gate["note"] = (
+                "DUMMY synthetic dye / detector assignment and threshold; for interaction practice only."
+            )
+            if gate["name"] == "live":
+                gate["label"] = "Live / dead — DUMMY BV1-A"
+    for mapping in recipe["channel_roles"].values():
+        mapping["confirmed"] = True
+        mapping["is_example"] = True
+    recipe_path.write_text(json.dumps(recipe, indent=2) + "\n")
     with (out / "workflow/samples.csv").open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()

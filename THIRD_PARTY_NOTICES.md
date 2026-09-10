@@ -21,3 +21,12 @@ remain embedded and unchanged. Their notices permit free-of-charge distribution
 and read-only usage, and reserve modification and other rights. They are not
 covered by a blanket claim that every bundled file may be modified under BSD.
 Keep these standard schemas byte-for-byte unchanged; customize our Python code.
+
+## Fonts
+
+Manrope and Playfair Display are bundled for offline desktop and report rendering,
+under the SIL Open Font License 1.1. Original font files are from the Accessible
+Surfaceome assets; accompanying upstream licenses and copyright notices are in
+`src/agentflow/assets/fonts/Manrope-OFL.txt` and `PlayfairDisplay-OFL.txt`.
+Upstream sources: https://github.com/google/fonts/tree/main/ofl/manrope and
+https://github.com/google/fonts/tree/main/ofl/playfairdisplay.

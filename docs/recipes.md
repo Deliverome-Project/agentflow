@@ -49,3 +49,14 @@ Review flags are annotations, not an access-control mechanism. Batch execution
 allows draft gates and makes their status explicit in reports and tables. A human
 must decide when results are suitable for experimental conclusions. `is_example`
 remains true after review; changing a gate does not promote a dummy experiment.
+
+
+AND/OR co-expression gates reference earlier populations. `channels` specifies the
+2D view; the native Boolean operation determines membership, within `parent`.
+Changing a referenced gate invalidates review of the combination.
+
+```json
+{"name":"double_positive", "parent":"live", "kind":"boolean",
+ "operation":"and", "references":["gfp","mscarlet"],
+ "channels":["BL1-A","YL2-A"], "reviewed":false}
+```

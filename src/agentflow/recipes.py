@@ -50,7 +50,13 @@ def validate(recipe):
             raise ValueError(f"Gate requires {expected} distinct channel(s)")
         if not set(gate["channels"]) <= recipe["transforms"].keys():
             raise ValueError("Every gate channel requires an explicit transform")
-        if gate["kind"] == "polygon":
+        if gate["kind"] == "boolean":
+            refs = gate.get("references", [])
+            if gate.get("operation") not in ("and", "or") or len(refs) < 2 or len(set(refs)) != len(refs):
+                raise ValueError("Boolean gates need AND/OR and at least two distinct earlier populations")
+            if not set(refs) <= (seen - {"root"}):
+                raise ValueError("Boolean references must precede the gate")
+        elif gate["kind"] == "polygon":
             points = np.asarray(gate["vertices"], dtype=float)
             if points.ndim != 2 or points.shape[1] != 2 or len(points) < 3:
                 raise ValueError("Polygon requires at least three 2D vertices")
@@ -73,6 +79,10 @@ def validate(recipe):
         else:
             raise ValueError("Gate kind must be polygon, rectangle, or range")
         seen.add(gate["name"])
+    if "sample_overrides" in recipe:
+        from .overrides import validate_overrides
+
+        validate_overrides(recipe)
 
 
 def save_recipe(path, recipe):
