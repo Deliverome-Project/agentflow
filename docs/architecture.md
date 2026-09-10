@@ -41,3 +41,8 @@ Extension rules: add tests with known populations/matrices for scientific change
 never silently guess marker identity, skip samples, or treat draft thresholds as
 validated biology. Add new gate types to validation, native compilation, editor,
 plots and roundtrip tests together. Keep experimental data out of tests and Git.
+
+Matplotlib is constrained below 3.11 because its 3.11 TextBox resize callback
+assumes mouse-event fields on a ResizeEvent. The native desktop smoke check
+exposed this; a synthetic resize-event test now guards it. Re-evaluate the bound
+when upstream fixes that callback and the GUI suite passes against the new release.
