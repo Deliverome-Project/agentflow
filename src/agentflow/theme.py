@@ -38,7 +38,7 @@ def setup_plots():
 def desktop_style():
     return f"""
     QWidget {{ font-family: "Manrope"; font-size: 13px; color: {INK}; }}
-    QMainWindow, QWidget#root {{ background: {BG}; }}
+    QMainWindow, QDialog, QWidget#root {{ background: {BG}; }}
     QLabel {{ background: transparent; }}
     QLabel#brand {{ font-family: "Playfair Display"; font-size: 32px; color: {BERRY}; }}
     QLabel#title {{ font-family: "Playfair Display"; font-size: 30px; }}
@@ -58,6 +58,7 @@ def desktop_style():
     QPushButton#primary {{ background: {BERRY}; color: white; border-color: {BERRY}; }}
     QPushButton#primary:hover {{ background: #8b174a; }}
     QPushButton:disabled {{ color: #a6a3a4; background: #f6f5f5; border-color: {LINE}; }}
+    QPushButton#primary:disabled {{ color: #a6a3a4; background: #f6f5f5; border-color: {LINE}; }}
     QLineEdit, QComboBox {{ background: white; border: 1px solid {LINE}; border-radius: 6px;
                            padding: 8px; min-width: 80px; }}
     QLineEdit:focus, QComboBox:focus {{ border-color: {BERRY}; }}
@@ -65,5 +66,9 @@ def desktop_style():
     QScrollBar::handle:vertical {{ background: #d9cbd1; border-radius: 4px; min-height: 24px; }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+    QTableWidget {{ background: white; gridline-color: {LINE}; border: 1px solid {LINE};
+                     selection-background-color: {SOFT}; selection-color: {BERRY}; }}
+    QHeaderView::section {{ background: {SOFT}; border: none; padding: 7px; color: {BERRY}; }}
+    QToolBar {{ background: {BG}; border: none; }}
     QToolTip {{ background: white; border: 1px solid {LINE}; padding: 6px; }}
     """

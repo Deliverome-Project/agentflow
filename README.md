@@ -131,7 +131,9 @@ bright unsaturated controls, and an optional uncompensated cleanup recipe.
 The output contains thresholds, median values, counts, and control fingerprints,
 plus coefficient and before/after control plots. Inspect these before use; this
 is not a claim of equivalence to FlowJo AutoSpill or Cytoflow's regression estimator.
-See [compensation details](docs/compensation.md).
+The desktop **Calculate compensation…** dialog lets you assign single-stain files,
+inspect histograms and adjust raw-signal thresholds. It exports the same estimator
+results with control evidence and before/after plots. See [compensation details](docs/compensation.md).
 
 Load a matrix into a recipe with `init --matrix`, by editing its `compensation`
 object, or via the editor's **View / change matrix… → Import matrix…** controls. Loading
@@ -166,7 +168,8 @@ reviewed revision; nothing needs copying into deliverome-analysis.
 `agentflow validate recipe.json` checks a recipe. `agentflow export-gml sample.fcs
 --recipe recipe.json --out gates.xml` exports gates, transforms, and resolved
 compensation. Application notes, example labels and review flags are not part of
-GatingML; preserve the JSON as the complete agentflow record. Agents can use all
+GatingML; preserve the JSON as the complete agentflow record. Recipes with sample
+exceptions require `--sample-id ID` or `--shared-template` when exporting. Agents can use all
 CLI commands except the optional desktop editor without a display.
 
 ## Development and ownership

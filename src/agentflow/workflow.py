@@ -46,6 +46,7 @@ def mark_unreviewed(recipe, name=None):
             affected.add(gate["name"])
         if gate["name"] in affected:
             gate["reviewed"] = False
+    return affected
 
 
 def add_reporter(recipe, sample_path, role, channel, confirmed=False):

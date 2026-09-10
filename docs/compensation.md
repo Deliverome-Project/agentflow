@@ -48,3 +48,14 @@ positive/negative gate review, and adequate control brightness:
 CSV/TSV import accepts a labelled square table with source detector names in the
 first column and target names in the first row. It is not an unrestricted parser
 for every vendor's matrix export dialect. Convert headers/units deliberately.
+
+The native workbench now exposes this same estimator through **Calculate
+compensation…**, with file assignment, raw-unit threshold fields, clickable control
+histograms and minimum-event settings. Load this JSON format to include an
+uncompensated cleanup recipe. Export creates a new review directory atomically;
+applying the resulting matrix is a separate action and clears gate review flags.
+Edits to control inputs invalidate the previous calculation. Python callers can use
+`agentflow.control_review.export_control_review(config, output)` with absolute input
+paths; `resolve_config(config, base_directory)` converts a file-relative config first.
+Separate unstained negative files, regression/AutoSpill and suitability assessment
+against representative lab controls remain outstanding.

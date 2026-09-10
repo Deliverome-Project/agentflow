@@ -138,3 +138,66 @@ def test_cli_multi_sample_dispatch(window, monkeypatch, capsys):
     samples = str(__import__("pathlib").Path(window.records[0]["fcs_path"]).parent / "workflow/samples.csv")
     assert main(["edit", "--samples", samples, "--recipe", str(window.state.path)]) == 2
     assert "cancelled" in capsys.readouterr().out
+
+
+def test_sample_exception_shared_counts_save_and_undo(window):
+    from agentflow.samples import sample_recipe
+
+    shared = copy.deepcopy(window.state.recipe)
+    other = window.records[1]
+    _, masks = window.session.get(other, shared)
+    expected = int(masks["live"].sum())
+    window.edit_scope.setCurrentIndex(1)
+    window.upper.setText("10")
+    window.apply_bounds()
+    assert window.state.counts()["live"] < 100
+    assert window.state.recipe["gates"] == shared["gates"]
+    assert sample_recipe(window.state.recipe, other)["gates"] == shared["gates"]
+    window.sample_choice.setCurrentIndex(1)
+    assert window.state.counts()["live"] == expected
+    window.sample_choice.setCurrentIndex(0)
+    assert window.state.counts()["live"] < 100
+    window.travel(False)
+    assert window.state.counts()["live"] > 3000
+    window.travel(True)
+    assert window.state.counts()["live"] < 100
+    window.save()
+    saved = json.loads(window.state.path.read_text())
+    assert "bounds" in saved["sample_overrides"]["DUMMY-1"]["live"]
+
+
+def test_pinned_reference_survives_group_filter(window):
+    window.pinned = {"DUMMY-1"}
+    window.sample_choice.setCurrentIndex(2)
+    window.group_choice.setCurrentText("High expression")
+    assert [r["sample_id"] for r in window.plot_records()] == ["DUMMY-1", "DUMMY-3"]
+    assert any("Pinned · DUMMY-1" in t.get_text() for t in window.ax.get_legend().texts)
+    window.save()
+    assert json.loads(window.state.path.read_text())["display"]["pinned_samples"] == ["DUMMY-1"]
+
+
+def test_compensation_wizard_review_click_export(window, demo, tmp_path, monkeypatch):
+    from agentflow.compensation_wizard import CompensationWizard
+    from agentflow.control_review import resolve_config
+
+    wizard = CompensationWizard(window, ["BL1-A"])
+    wizard.set_config(resolve_config(json.loads((demo / "controls.json").read_text()), demo))
+    wizard.show()
+    W.QApplication.processEvents()
+    assert "Negative: 1,000" in wizard.status.text()
+    wizard.place_threshold(SimpleNamespace(button=1, inaxes=wizard.ax, xdata=600.0))
+    assert float(wizard.table.item(0, 2).text()) == 600
+    output = tmp_path / "review"
+    monkeypatch.setattr(W.QFileDialog, "getSaveFileName", lambda *a: (str(output), ""))
+    wizard.calculate()
+    assert wizard.spec is not None, wizard.status.text()
+    assert wizard.apply_button.isEnabled()
+    assert (output / "diagnostics/control-01.png").exists()
+    expected = json.loads((demo / "expected-spillover.json").read_text())
+    import numpy as np
+
+    np.testing.assert_allclose(wizard.spec["values"], expected["values"], atol=0.001)
+    wizard.table.item(0, 2).setText("700")
+    assert wizard.spec is None
+    assert not wizard.apply_button.isEnabled()
+    wizard.reject()

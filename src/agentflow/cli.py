@@ -56,6 +56,9 @@ def parser():
     export.add_argument("sample")
     export.add_argument("--recipe", required=True)
     export.add_argument("--out", required=True)
+    export_scope = export.add_mutually_exclusive_group()
+    export_scope.add_argument("--sample-id", help="Resolve this sample ID’s gate exceptions")
+    export_scope.add_argument("--shared-template", action="store_true", help="Explicitly export shared gates")
     comp = commands.add_parser("compensation", help="Import or estimate a labelled spillover matrix")
     sub = comp.add_subparsers(dest="operation", required=True)
     imp = sub.add_parser("import")
@@ -166,7 +169,12 @@ def main(argv=None):
         elif args.command == "edit":
             return open_editor(args)
         elif args.command == "export-gml":
+            from .overrides import effective_recipe
+
             recipe = load_recipe(args.recipe)
+            if recipe.get("sample_overrides") and not (args.sample_id or args.shared_template):
+                raise ValueError("Recipe has sample exceptions; choose --sample-id or --shared-template")
+            recipe = effective_recipe(recipe, args.sample_id)
             prepared = prepare(args.sample, recipe)
             with Path(args.out).open("xb") as handle:
                 flowkit().export_gatingml(build_strategy(recipe, prepared.matrix), handle)

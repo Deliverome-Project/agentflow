@@ -125,3 +125,63 @@ See [FlowJo transforms](https://flowjo.com/docs/flowjo11/graphs-and-gating/trans
 for display-scale context and this [flow screening protocol](https://pubmed.ncbi.nlm.nih.gov/33778785/)
 for control-based gating and expression/viability plate summaries. Agentflow does
 not claim exact implementation equivalence to FlowJo or Sony software.
+
+## Pinned reference samples
+
+Choose **Pinned controls…** to keep one or more named samples overlaid while
+stepping through test samples or filtering groups. Pinning does not pool events,
+change gates or assign experimental control roles. Pinned traces retain their
+group colors and have sample-specific legend labels. The active sample always
+remains visible. Pin selections are saved in `display.pinned_samples` and support
+undo/redo. The plate and comparison galleries continue to follow the group filter.
+
+## Sample-specific gate exceptions
+
+**Edit gates for → All samples** changes the shared template. **This sample only**
+stores geometry and review exceptions under the selected sample's exact
+`sample_id`. Counts and gallery boundaries use the effective gates for each sample;
+CLI runs apply the same exceptions. The hierarchy, channels and transforms remain
+shared. Newly created populations and compensation changes are shared operations.
+
+A sample exception stays in place when shared gates change. Changes to a parent,
+Boolean dependency or compensation invalidate affected review flags, including
+sample-specific reviews. A gate with different sample geometry is read-only in
+All samples mode: switch to This sample only, or choose **Reset selected exception**.
+Reset restores shared geometry and marks the affected sample populations for review.
+Geometry and review changes are saved together, with undo/redo and protection
+against overwriting a recipe changed by another process. Per-sample exceptions are
+also recorded in `run.json` alongside each input.
+
+```json
+"sample_overrides": {
+  "sample-001": {
+    "live": {"bounds": [null, 4.0], "reviewed": false}
+  }
+}
+```
+
+Recipe coordinates remain transformed coordinates; GUI threshold fields use signal
+units. Sample IDs are exact identifiers, not filenames. Reusing an ID for unrelated
+data also reuses its exceptions: keep IDs stable and unique across a study.
+
+## Interactive compensation calculation
+
+Choose **Calculate compensation…**. Assign each detector's single-stain FCS file,
+or load an existing control configuration. Select a row to view its histogram;
+click to place the negative maximum or positive minimum, or type exact raw values.
+The two populations must be nonoverlapping and sufficiently populated. The graph
+uses an asinh display to retain negative/near-zero signals; thresholds stay in raw units.
+
+**Calculate & export review…** creates a new folder containing the exact control
+configuration, draft matrix with hashes/counts/medians, matrix image and before/after
+control plots. Failed calculations publish no partial folder. Inspect the diagnostic
+plots before choosing **Apply draft matrix**; applying invalidates gate reviews.
+Sample-sheet `compensation_path` assignments still take precedence over the shared
+matrix. The original sample files are never modified.
+
+To practice, load the synthetic demo's `controls.json`. The example has four
+single-stain files and known spillover. The estimator uses the same-file median
+method described in [compensation controls](compensation.md), including its
+limitations. A configured uncompensated cleanup recipe is supported and its eligible
+events appear in the preview. Drawing cleanup gates inside this dialog and separate
+unstained negative files are not implemented yet.

@@ -68,6 +68,8 @@ def run_cached(samples, recipe, output, cache):
     out, cache = Path(output).resolve(), Path(cache).resolve()
     if out.exists():
         raise ValueError("Output already exists; choose a new run directory")
+    if cache == out or out in cache.parents:
+        raise ValueError("Cache directory must be outside the output directory")
     key = cache_key(samples, recipe)
     entry = cache / key
     out.parent.mkdir(parents=True, exist_ok=True)

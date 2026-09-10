@@ -12,7 +12,7 @@ from PySide6 import QtWidgets as W
 from .desktop import TITLES, GateWindow, button, label
 from .engine import make_transform
 from .plot_views import apply_axes, draw_boundary, draw_events
-from .samples import SampleSession
+from .samples import SampleSession, sample_recipe
 
 
 class ScreenWindow(GateWindow):
@@ -20,6 +20,7 @@ class ScreenWindow(GateWindow):
         self.session = SampleSession(records)
         self.records = records
         self.record = records[0]
+        self.pinned = set(recipe.get("display", {}).get("pinned_samples", []))
         self.ready = False
         self.gallery_pending = False
         prepared, _ = self.session.get(self.record, recipe)
@@ -51,6 +52,17 @@ class ScreenWindow(GateWindow):
             "muted",
         )
         self.root_layout.insertWidget(2, self.scope)
+        scopes = W.QHBoxLayout()
+        scopes.addWidget(label("Edit gates for"))
+        self.edit_scope = W.QComboBox()
+        self.edit_scope.addItems(["All samples", "This sample only"])
+        self.edit_scope.currentIndexChanged.connect(self.change_scope)
+        scopes.addWidget(self.edit_scope)
+        scopes.addWidget(button("Reset selected exception", self.reset_exception))
+        scopes.addStretch()
+        scopes.addWidget(button("Pinned controls…", self.pin_dialog))
+        scopes.addWidget(button("Calculate compensation…", self.compensation_wizard))
+        self.root_layout.insertLayout(3, scopes)
         settings = W.QHBoxLayout()
         self.plot_type = W.QComboBox()
         self.plot_type.addItems(["Scatter", "Density", "Contour"])
@@ -138,12 +150,68 @@ class ScreenWindow(GateWindow):
         self.ready = True
         self.show_gate(self.active_name)
 
+    def change_scope(self, index):
+        if not self.ready:
+            return
+        try:
+            self.flush_bounds()
+        except ValueError as error:
+            self.edit_scope.blockSignals(True)
+            self.edit_scope.setCurrentIndex(int(self.state.sample_scope))
+            self.edit_scope.blockSignals(False)
+            self.message.setText(str(error))
+            return
+        self.state.sample_scope = bool(index)
+        self.show_gate(self.active_name)
+
+    def reset_exception(self):
+        try:
+            self.flush_bounds()
+            self.state.reset_override(self.active_name)
+            self.show_gate(self.active_name)
+        except (ValueError, OSError, TypeError) as error:
+            self.message.setText(str(error))
+
+    def pin_dialog(self):
+        dialog = W.QDialog(self)
+        dialog.setWindowTitle("Keep reference samples visible")
+        layout = W.QVBoxLayout(dialog)
+        layout.addWidget(label("Pinned samples stay overlaid across sample and group changes."))
+        choices = W.QListWidget()
+        for record in self.records:
+            item = W.QListWidgetItem(f"{record['sample_id']} · {record['group']}", choices)
+            item.setData(QtCore.Qt.UserRole, record["sample_id"])
+            item.setCheckState(
+                QtCore.Qt.Checked if record["sample_id"] in self.pinned else QtCore.Qt.Unchecked
+            )
+        layout.addWidget(choices)
+        buttons = W.QDialogButtonBox(W.QDialogButtonBox.Ok | W.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() == W.QDialog.Accepted:
+            self.pinned = {
+                choices.item(i).data(QtCore.Qt.UserRole)
+                for i in range(choices.count())
+                if choices.item(i).checkState() == QtCore.Qt.Checked
+            }
+            candidate = copy.deepcopy(self.state.recipe)
+            candidate.setdefault("display", {})["pinned_samples"] = sorted(self.pinned)
+            self.state.apply(candidate)
+            self.redraw()
+
+    def plot_records(self):
+        selected = self.selected_records() if self.overlay.isChecked() else [self.record]
+        ids = {r["sample_id"] for r in selected} | self.pinned | {self.record["sample_id"]}
+        return [r for r in self.records if r["sample_id"] in ids]
+
     def selected_records(self):
         group = self.group_choice.currentText()
         return [r for r in self.records if group == "All groups" or r["group"] == group]
 
     def show_gate(self, name):
         if self.ready:
+            self.state.sample_id = self.record["sample_id"]
             prepared, _ = self.session.get(self.record, self.state.recipe)
             self.state.prepared = prepared
             self.sample_label.setText(self.record["sample_id"] + "\n" + self.record["group"])
@@ -212,7 +280,7 @@ class ScreenWindow(GateWindow):
     def draw_active(self, gate, parent):
         if not self.ready:
             return super().draw_active(gate, parent)
-        records = self.selected_records() if self.overlay.isChecked() else [self.record]
+        records = self.plot_records()
         datasets = []
         for r in records:
             prepared, masks = self.session.get(r, self.state.recipe)
@@ -232,7 +300,7 @@ class ScreenWindow(GateWindow):
                 bins = np.linspace(lo if lo != hi else lo - 1, hi if lo != hi else hi + 1, 101)
         kind = self.plot_type.currentText().lower()
         # Group identity cannot be encoded by a pooled density color ramp.
-        if self.overlay.isChecked() and kind == "density":
+        if len(records) > 1 and kind == "density":
             kind = "contour"
         seen_groups = set()
         for r, data in datasets:
@@ -244,13 +312,15 @@ class ScreenWindow(GateWindow):
                 gate["channels"],
                 kind,
                 r["color"],
-                group_label if self.overlay.isChecked() else None,
+                (f"Pinned · {r['sample_id']}" if r["sample_id"] in self.pinned else group_label)
+                if len(records) > 1
+                else None,
                 self.point_size.value(),
                 self.opacity.value() / 100,
                 ["count", "area", "peak"][self.normalization.currentIndex()],
                 bins,
             )
-        if self.overlay.isChecked():
+        if len(records) > 1:
             self.ax.legend(fontsize=8, loc="upper right", frameon=False)
 
     def finish_plot(self, gate):
@@ -265,7 +335,7 @@ class ScreenWindow(GateWindow):
         self.point_size.setEnabled(len(gate["channels"]) == 2 and self.plot_type.currentText() == "Scatter")
         apply_axes(self.ax, gate["channels"], self.state.recipe, modes)
         self.picked = {}
-        for other in self.state.recipe["gates"]:
+        for other in self.state.active_recipe["gates"]:
             if (
                 other["name"] != gate["name"]
                 and other.get("channels") == gate["channels"]
@@ -290,14 +360,22 @@ class ScreenWindow(GateWindow):
         self.edit_button.setEnabled(not preview)
         self.bounds_widget.setEnabled(not preview)
         self.y_scale.setEnabled(len(gate["channels"]) == 2)
-        if self.overlay.isChecked():
-            self.scope.setText(
-                f"Shared recipe · {len(self.records)} samples. Overlay: {len(self.selected_records())} samples; each shown separately in its group color. Counts below are for {self.record['sample_id']}."
+        exceptions = self.state.recipe.get("sample_overrides", {}).get(self.record["sample_id"], {})
+        scope = self.record["sample_id"] if self.state.sample_scope else f"all {len(self.records)} samples"
+        geometry_exception = any(k in exceptions.get(gate["name"], {}) for k in ("bounds", "vertices"))
+        if geometry_exception and not self.state.sample_scope:
+            if self.selector:
+                self.selector.set_active(False)
+            self.edit_button.setEnabled(False)
+            self.bounds_widget.setEnabled(False)
+            self.help.setText(
+                "This sample has different gate geometry. Choose This sample only to edit, or reset its exception."
             )
-        else:
-            self.scope.setText(
-                f"Shared recipe · edits apply to all {len(self.records)} samples. Matrix assignments may differ by sample."
-            )
+        self.review_button.setEnabled(self.state.sample_scope or gate["name"] not in exceptions)
+        badge = " · Sample-specific geometry/review" if gate["name"] in exceptions else ""
+        self.scope.setText(
+            f"Editing {scope}{badge}. Counts: {self.record['sample_id']}. Pinned references: {len(self.pinned)}."
+        )
         self.request_gallery()
 
     def after_refresh(self):
@@ -332,7 +410,7 @@ class ScreenWindow(GateWindow):
             self.draw_plates()
             return
         compare = self.gallery_mode.currentIndex() == 1
-        items = self.selected_records() if compare else self.state.recipe["gates"]
+        items = self.selected_records() if compare else self.state.active_recipe["gates"]
         self.gallery_page.setMaximum(max(1, (len(items) + 11) // 12))
         start = (self.gallery_page.value() - 1) * 12
         all_items = items
@@ -357,6 +435,9 @@ class ScreenWindow(GateWindow):
             gate, record = (active, item) if compare else (item, self.record)
             if gate is None:
                 continue
+            gate = next(
+                g for g in sample_recipe(self.state.recipe, record)["gates"] if g["name"] == gate["name"]
+            )
             ax = self.gallery_figure.add_subplot(max(1, (n + 1) // 2), 2, i + 1)
             self.gallery_axes[ax] = ("sample", record["sample_id"]) if compare else ("gate", gate["name"])
             try:
@@ -509,6 +590,7 @@ class ScreenWindow(GateWindow):
             self.flush_bounds()
             candidate = copy.deepcopy(self.state.recipe)
             candidate["display"] = {
+                "pinned_samples": sorted(self.pinned),
                 "plot_type": self.plot_type.currentText(),
                 "point_size": self.point_size.value(),
                 "opacity": self.opacity.value(),
@@ -550,9 +632,23 @@ class ScreenWindow(GateWindow):
     def travel(self, redo):
         try:
             self.state.travel(redo)
+            self.pinned = set(self.state.recipe.get("display", {}).get("pinned_samples", []))
             self.rebuild(self.active_name)
         except (ValueError, OSError, KeyError) as error:
             self.message.setText(str(error))
+
+    def compensation_wizard(self):
+        from .compensation_wizard import CompensationWizard
+
+        detectors = [c for c, t in self.state.recipe["transforms"].items() if t["kind"] != "linear"]
+        wizard = CompensationWizard(self, detectors)
+        if wizard.exec() == W.QDialog.Accepted and wizard.spec is not None:
+            try:
+                self.flush_bounds()
+                self.state.compensate(wizard.spec)
+                self.show_gate(self.active_name)
+            except (ValueError, OSError, KeyError) as error:
+                self.message.setText(f"Matrix not applied: {error}")
 
     def matrix_dialog(self):
         super().matrix_dialog(allow_import=not bool(self.record.get("compensation_path")))

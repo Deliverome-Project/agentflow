@@ -220,8 +220,10 @@ class GateWindow(W.QMainWindow):
         self.gates.clear()
         for n in self.names:
             self.gates.addItem(TITLES.get(n, n))
+        row = self.names.index(name) if name in self.names else 0
+        self.gates.setCurrentRow(row)
         self.gates.blockSignals(False)
-        self.gates.setCurrentRow(self.names.index(name) if name in self.names else 0)
+        self.show_gate(self.names[row])
 
     def change_row(self, row):
         if row >= 0:
@@ -305,7 +307,7 @@ class GateWindow(W.QMainWindow):
         )
         if uncertain:
             self.subtitle.setText(self.subtitle.text() + "  ·  Dye mapping unconfirmed")
-        parent = evaluate(self.state.prepared, self.state.recipe)[gate["parent"]]
+        parent = evaluate(self.state.prepared, self.state.active_recipe)[gate["parent"]]
         self.draw_active(gate, parent)
         for axis, channel in zip((self.ax.xaxis, self.ax.yaxis), gate["channels"]):
             axis.set_label_text(f"{channel}  ·  {self.state.recipe['transforms'][channel]['kind']}")
@@ -404,7 +406,7 @@ class GateWindow(W.QMainWindow):
                 else "events kept  ·  parent is empty"
             )
             self.review_badge.setText("Reviewed" if gate.get("reviewed") else "Draft gate")
-        reviewed = sum(bool(g.get("reviewed")) for g in self.state.recipe["gates"])
+        reviewed = sum(bool(g.get("reviewed")) for g in self.state.active_recipe["gates"])
         self.progress.setText(f"{reviewed} of {len(self.state.recipe['gates'])} gates reviewed")
         spec = self.state.recipe["compensation"]
         mode = spec["mode"]

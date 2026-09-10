@@ -1,7 +1,6 @@
 """Sample-sheet metadata, explicit compensation assignments and bounded preview caches."""
 
 import colorsys
-import copy
 import io
 import json
 from collections import OrderedDict
@@ -12,6 +11,7 @@ from matplotlib.colors import is_color_like, to_hex
 
 from .compensation import load_matrix
 from .engine import digest, evaluate, prepare
+from .overrides import effective_recipe
 
 PALETTE = ["#922038", "#3d6b60", "#5848a8", "#c07830", "#2375a0", "#bc3c4c"]
 
@@ -53,7 +53,7 @@ def read_samples(path):
 
 
 def sample_recipe(recipe, record):
-    result = copy.deepcopy(recipe)
+    result = effective_recipe(recipe, record["sample_id"])
     if record.get("compensation_path"):
         result["compensation"] = load_matrix(record["compensation_path"])
     return result

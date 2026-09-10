@@ -54,3 +54,9 @@ Matplotlib is constrained below 3.11 because its 3.11 TextBox resize callback
 assumes mouse-event fields on a ResizeEvent. The native desktop smoke check
 exposed this; a synthetic resize-event test now guards it. Re-evaluate the bound
 when upstream fixes that callback and the GUI suite passes against the new release.
+
+`overrides.py` validates restricted per-sample geometry/review patches and resolves
+effective recipes; `samples.py` applies these before both preview and batch evaluation.
+`control_review.py` publishes atomic compensation review bundles using the headless
+estimator. `compensation_wizard.py` supplies optional Qt control assignment/threshold
+review and never implements a separate compensation formula.

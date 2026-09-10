@@ -79,6 +79,10 @@ def validate(recipe):
         else:
             raise ValueError("Gate kind must be polygon, rectangle, or range")
         seen.add(gate["name"])
+    if "sample_overrides" in recipe:
+        from .overrides import validate_overrides
+
+        validate_overrides(recipe)
 
 
 def save_recipe(path, recipe):
