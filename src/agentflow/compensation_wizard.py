@@ -243,7 +243,8 @@ class CompensationWizard(W.QDialog):
         )
         choice = W.QComboBox()
         files = sorted((self.review_directory / "diagnostics").glob("*.png"))
-        choice.addItems([f"{i + 1}. {self.spec['detectors'][i]}" for i in range(len(files))])
+        controls = self.spec["estimation"]["controls"]
+        choice.addItems([f"{i + 1}. {controls[i]['detector']}" for i in range(len(files))])
         layout.addWidget(choice)
         scroll = W.QScrollArea()
         picture = W.QLabel()

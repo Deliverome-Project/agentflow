@@ -1,5 +1,6 @@
 """Run the existing headless CLI in a separate process, isolated from Qt rendering."""
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -55,6 +56,12 @@ class AnalysisJob(QtCore.QObject):
             self.completed.emit(str(self.output / "report.html"))
         else:
             message = bytes(self.process.readAllStandardError()).decode(errors="replace")
+            try:
+                details = json.loads(message)
+                if isinstance(details, dict):
+                    message = details.get("message", message)
+            except ValueError:
+                pass
             self.failed.emit(message.strip() or "Analysis process exited unexpectedly")
         self._cleanup()
 

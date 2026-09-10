@@ -345,6 +345,8 @@ def test_compensation_diagnostics_open_inside_app(window, demo):
 
     wizard = CompensationWizard(window, [])
     wizard.spec = json.loads((demo / "compensation.json").read_text())
+    # Matrix column order may differ from the order of control review images.
+    wizard.spec["detectors"] = list(reversed(wizard.spec["detectors"]))
     # Existing demo diagnostics have the same files as exported review bundles.
     wizard.review_directory = demo
     source = demo / "control-diagnostics"
@@ -362,6 +364,7 @@ def test_compensation_diagnostics_open_inside_app(window, demo):
             dialog = W.QApplication.activeModalWidget()
             choice = dialog.findChild(W.QComboBox)
             assert choice.count() == 4
+            assert choice.itemText(0) == f"1. {wizard.spec['estimation']['controls'][0]['detector']}"
             choice.setCurrentIndex(1)
             picture = dialog.findChild(W.QScrollArea).widget()
             assert not picture.pixmap().isNull()
