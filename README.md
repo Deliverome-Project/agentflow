@@ -193,3 +193,7 @@ remain external and locked. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 See [the roadmap](docs/roadmap.md) for prioritized FlowJo-style features; this
 release does not claim a complete FlowJo replacement.
+
+The [workspace feature design](docs/design/flowjo-workflows.md) translates the
+FlowJo basic tutorial into proposed simpler workflows and shared GUI, CLI, Python
+and YAML interfaces. It distinguishes current functionality from planned work.

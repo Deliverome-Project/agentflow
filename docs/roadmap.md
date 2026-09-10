@@ -1,5 +1,9 @@
 # FlowJo-style features to prioritize
 
+The [tutorial-based workspace design](design/flowjo-workflows.md) maps the 2018
+FlowJo tutorial to current capabilities, proposed GUI/CLI/Python/YAML contracts,
+and staged acceptance criteria. Its proposed interfaces are not implemented yet.
+
 | Capability | Current release | Next step / value for screens |
 |---|---|---|
 | Hierarchical gates | Polygon, rectangle, range and AND/OR co-expression; shared engine | Quadrant creation presets |
@@ -13,7 +17,9 @@
 | Agent workflows | CLI JSON status, importable API, immutable run directories | Stable JSON Schema, recipe diff summaries and review automation |
 | Sharing/install | Private Git install, locked environment, tests and wheel build | Versioned releases after representative team validation |
 
-Next additions are control-cleanup editing, editable transform parameters and validation on representative lab controls.
+Recommended next work is lossless YAML configuration support, ancestry navigation
+and orthogonal quadrants, followed by explicit analysis sets and reusable endpoint/report definitions.
+Control-cleanup editing and real-control validation remain required for scientific confidence.
 Do not add clustering, dimensionality reduction or a full workspace clone before
 we have validated the basic few-channel workflow on real experiments. Screen
 normalization and hit calling require an agreed experimental design, not a generic
