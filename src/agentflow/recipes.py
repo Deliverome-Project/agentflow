@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 from ._vendor import flowkit
 
@@ -93,7 +94,10 @@ def save_recipe(path, recipe):
     try:
         with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as handle:
             temporary = Path(handle.name)
-            json.dump(recipe, handle, indent=2, allow_nan=False)
+            if path.suffix.lower() in {".yaml", ".yml"}:
+                yaml.safe_dump(json.loads(json.dumps(recipe, allow_nan=False)), handle, sort_keys=False)
+            else:
+                json.dump(recipe, handle, indent=2, allow_nan=False)
             handle.write("\n")
         temporary.replace(path)
     finally:
@@ -102,6 +106,13 @@ def save_recipe(path, recipe):
 
 
 def load_recipe(path):
-    recipe = json.loads(Path(path).read_text())
+    path = Path(path)
+    recipe = (
+        yaml.safe_load(path.read_text())
+        if path.suffix.lower() in {".yaml", ".yml"}
+        else json.loads(path.read_text())
+    )
+    if isinstance(recipe, dict) and recipe.get("snapshot_version") == 1:
+        recipe = recipe["recipe"]
     validate(recipe)
     return recipe

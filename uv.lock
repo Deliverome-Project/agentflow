@@ -25,6 +25,7 @@ dependencies = [
     { name = "pandas" },
     { name = "psutil" },
     { name = "pyarrow" },
+    { name = "pyyaml" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
@@ -55,6 +56,7 @@ requires-dist = [
     { name = "psutil", specifier = ">=7" },
     { name = "pyarrow", specifier = ">=18" },
     { name = "pyside6", marker = "extra == 'gui'", specifier = ">=6.7,<7" },
+    { name = "pyyaml", specifier = ">=6,<7" },
     { name = "scipy", specifier = ">=1.14" },
 ]
 provides-extras = ["gui"]

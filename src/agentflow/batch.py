@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from .engine import digest, evaluate, prepare, save_recipe, summarize, validate
+from .engine import digest, evaluate, load_recipe, prepare, save_recipe, summarize, validate
 from .plots import save_qc, save_time_qc
+from .provenance import save_snapshot, software_identity
 from .quality import sample_quality
 from .reporting import write_report
 from .samples import read_samples, sample_recipe
@@ -20,8 +21,9 @@ from .vendor_info import vendor_identity
 
 
 def run_batch(samples, recipe_path, output):
+    implementation = software_identity()
     recipe_bytes = Path(recipe_path).read_bytes()
-    recipe = json.loads(recipe_bytes)
+    recipe = load_recipe(recipe_path)
     validate(recipe)
     manifest_bytes = Path(samples).read_bytes()
     manifest = pd.read_csv(io.BytesIO(manifest_bytes), dtype=str, keep_default_na=False)
@@ -95,6 +97,7 @@ def run_batch(samples, recipe_path, output):
                     "experiment": recipe.get("experiment", {}),
                     "pending_gates": recipe.get("pending_gates", []),
                     "flowkit": vendor_identity(),
+                    "agentflow": implementation,
                     "versions": {
                         p: version(p)
                         for p in [
@@ -120,6 +123,12 @@ def run_batch(samples, recipe_path, output):
             )
             + "\n"
         )
+        save_snapshot(
+            staging / "reproducibility.yaml",
+            recipe,
+            agentflow=implementation,
+            run=json.loads((staging / "run.json").read_text()),
+        )
         pd.DataFrame(
             [
                 {
@@ -134,6 +143,8 @@ def run_batch(samples, recipe_path, output):
             ]
         ).to_csv(staging / "quality.csv", index=False)
         write_report(staging, recipe, pd.concat(rows, ignore_index=True), provenance)
+        if software_identity() != implementation:
+            raise ValueError("Agentflow implementation changed during analysis")
         if out.exists():
             raise ValueError("Output appeared during analysis; choose a new run directory")
         staging.rename(out)

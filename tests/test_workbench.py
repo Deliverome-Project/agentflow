@@ -61,6 +61,31 @@ def test_dummy_live_threshold_signal_units_and_save(window):
     assert "display" in json.loads(window.state.path.read_text())
 
 
+def test_histogram_drag_keeps_threshold_and_zoom(window):
+    from matplotlib.backend_bases import MouseEvent
+
+    from agentflow.engine import load_recipe
+    from agentflow.threshold import ThresholdSelector
+
+    window.canvas.draw()
+    xlim, ylim = window.ax.get_xlim(), window.ax.get_ylim()
+    for fraction in (0.35, 0.65, 0.45):
+        assert isinstance(window.selector, ThresholdSelector)
+        value = xlim[0] + fraction * (xlim[1] - xlim[0])
+        x, y = window.ax.transData.transform((value, sum(ylim) / 2))
+        for name in ("button_press_event", "motion_notify_event", "button_release_event"):
+            event = MouseEvent(name, window.canvas, x, y, button=1)
+            window.canvas.callbacks.process(name, event)
+        W.QApplication.processEvents()
+        assert window.state.gate("live")["bounds"] == pytest.approx([None, value])
+        assert window.ax.get_xlim() == pytest.approx(xlim)
+        assert window.ax.get_ylim() == pytest.approx(ylim)
+        assert window.isVisible()
+    assert window.save_changes()
+    snapshot = window.state.path.with_suffix(".reproducibility.yaml")
+    assert load_recipe(snapshot) == load_recipe(window.state.path)
+
+
 def test_overlay_scatter_density_axes_and_counts(window):
     window.gates.setCurrentRow(0)
     before = copy.deepcopy(window.state.recipe)

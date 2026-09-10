@@ -18,6 +18,7 @@ from .engine import evaluate
 from .plots import draw_population
 from .population_tree import PopulationTree
 from .theme import ASSETS, BERRY, CORAL, desktop_style, setup_plots
+from .threshold import ThresholdSelector
 from .workflow import ROLES
 
 TITLES = {
@@ -385,6 +386,12 @@ class GateWindow(W.QMainWindow):
             )
             xmin, xmax = self.ax.get_xlim()
             self.selector.extents = (xmin if low is None else low, xmax if high is None else high)
+            if low is None or high is None:
+                self.selector.set_visible(False)
+                self.selector.disconnect_events()
+                self.selector = ThresholdSelector(
+                    self.ax, high if low is None else low, low is None, self.span, BERRY
+                )
             help_text = "Drag the shaded edge to set a threshold, or enter an exact value below. Units are transformed."
         self.help.setText(help_text)
         self.note.setText(
@@ -472,9 +479,13 @@ class GateWindow(W.QMainWindow):
         )
 
     def span(self, low, high):
+        limits = self.ax.get_xlim(), self.ax.get_ylim()
         mode = self.range_mode.currentIndex()
         bounds = [None if mode == 1 else float(low), None if mode == 0 else float(high)]
         self.perform(lambda: self.state.geometry(self.active_name, "bounds", bounds))
+        self.ax.set_xlim(limits[0])
+        self.ax.set_ylim(limits[1])
+        self.canvas.draw_idle()
 
     def update_bound_fields(self):
         mode = self.range_mode.currentIndex()

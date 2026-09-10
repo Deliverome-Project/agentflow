@@ -103,6 +103,14 @@ def test_batch_replay_and_metadata(tmp_path, recipe):
     assert json.loads((tmp_path / "one/run.json").read_text()) == json.loads(
         (tmp_path / "two/run.json").read_text()
     )
+    import yaml
+
+    snapshot = tmp_path / "one/reproducibility.yaml"
+    saved = yaml.safe_load(snapshot.read_text())
+    assert len(saved["agentflow"]["git_commit"]) == 40
+    assert len(saved["agentflow"]["source_sha256"]) == 64
+    replay = run_batch(samples, snapshot, tmp_path / "yaml-replay")
+    pd.testing.assert_frame_equal(first, replay)
     with pytest.raises(ValueError, match="exists"):
         run_batch(samples, path, tmp_path / "one")
     samples.write_text("sample_id,fcs_path\ns,missing.fcs\n")

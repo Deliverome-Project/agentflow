@@ -53,7 +53,7 @@ class Launcher(W.QDialog):
             self.select(Path(folder) / "recipe.json", Path(folder) / "samples.csv")
 
     def open_files(self):
-        recipe, _ = W.QFileDialog.getOpenFileName(self, "Choose recipe", "", "JSON (*.json)")
+        recipe, _ = W.QFileDialog.getOpenFileName(self, "Choose recipe", "", "Recipes (*.json *.yaml *.yml)")
         if not recipe:
             return
         samples, _ = W.QFileDialog.getOpenFileName(
