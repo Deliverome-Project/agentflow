@@ -46,6 +46,6 @@ def write_report(folder, recipe, table, inputs):
 <style>{fonts}body{{font:15px Manrope,sans-serif;background:{BG};margin:32px auto;max-width:1200px;color:{INK};padding:0 24px}}h1,h2{{font-family:"Playfair Display",serif;font-weight:500}}h1{{font-size:32px;color:{BERRY}}}.notice{{background:{SOFT};padding:18px;border-left:5px solid {BERRY}}}img{{max-width:100%}}.table{{overflow:auto}}table{{border-collapse:collapse;font-size:13px}}td,th{{padding:8px;border-bottom:1px solid #ddd}}a{{color:{BERRY}}}section{{margin-top:32px}}</style></head>
 <body><h1>{escape(title)}</h1><p class='notice'>Draft gates are drawing aids, not biologically validated populations. Counts use all events. Fluorescence medians precede display transformations. Missing gates below were not evaluated.</p>
 <h2>Unavailable / unmapped gates</h2><ul>{pending or "<li>None</li>"}</ul>
-<p>Compensation mode: <strong>{escape(recipe["compensation"]["mode"])}</strong>. <a href='recipe.json'>Recipe</a> · <a href='summary.csv'>Results CSV</a> · <a href='run.json'>Run provenance</a></p>
+<p>Default compensation mode: <strong>{escape(recipe["compensation"]["mode"])}</strong>. Sample-sheet matrix assignments override this default; resolved matrices are in run provenance. <a href='recipe.json'>Recipe</a> · <a href='summary.csv'>Results CSV</a> · <a href='run.json'>Run provenance</a></p>
 <div class='table'>{table.to_html(index=False, escape=True, float_format=lambda x: f"{x:.4g}")}</div>{"".join(sections)}</body></html>"""
     (folder / "report.html").write_text(html)

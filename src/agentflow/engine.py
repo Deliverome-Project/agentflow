@@ -97,7 +97,13 @@ def build_strategy(recipe, matrix=None):
                     range_max=bounds[1],
                 )
             )
-        if gate["kind"] == "polygon":
+        if gate["kind"] == "boolean":
+            operation = fk.gates.BooleanGate(
+                gate["name"],
+                gate["operation"],
+                [{"ref": ref, "path": paths[ref][:-1], "complement": False} for ref in gate["references"]],
+            )
+        elif gate["kind"] == "polygon":
             operation = fk.gates.PolygonGate(gate["name"], dims, gate["vertices"])
         else:
             operation = fk.gates.RectangleGate(gate["name"], dims)

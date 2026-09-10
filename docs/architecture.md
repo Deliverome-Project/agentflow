@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-CLI / Python API              Qt + Matplotlib GateWindow
+CLI / Python API              Qt + Matplotlib ScreenWindow
         |                      | recipe edits only
         +---------- recipes ---+
                        |
@@ -21,7 +21,12 @@ CLI / Python API              Qt + Matplotlib GateWindow
 | `workflow.py` | Draft gates, explicit role mappings, unavailable steps, review invalidation |
 | `engine.py` | Sample preparation, native FlowKit compilation/execution, statistics |
 | `editor_state.py` | Toolkit-independent transactions, validation, history, review invalidation and atomic saving |
-| `desktop.py` | Native Qt navigation/forms/dialogs and Matplotlib selectors; optional CLI editor |
+| `desktop.py` | Base single-sample native controls and Matplotlib selectors |
+| `workbench.py` | Multi-sample navigation, population/sample galleries, plate map and overlays |
+| `samples.py` | Sample-sheet validation, group colors, per-sample matrices and bounded preview cache |
+| `plot_views.py` | Shared scatter/density/histogram rendering, original-unit ticks and reversible display axes |
+| `screening.py` | Explicit control normalization, plate summaries and well-level descriptive aggregates |
+| `cache.py` | Verified, content-addressed reuse of identical batch outputs |
 | `theme.py`, `assets/fonts/` | Deliverome tokens and bundled Manrope/Playfair Display fonts and licenses |
 | `editor.py` | Legacy Matplotlib-only editor retained for compatibility; not used by the CLI |
 | `batch.py` | Sample manifests, sequential execution, staging, reproducible run records |

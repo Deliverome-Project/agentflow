@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentflow-cytometry"
-version = "0.3.0"
+version = "0.4.0"
 readme = "README.md"
 description = "Reproducible FlowKit analyses with an optional Matplotlib gate editor"
 requires-python = ">=3.11"

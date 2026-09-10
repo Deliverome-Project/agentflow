@@ -26,22 +26,28 @@ contains three screen samples and four single-stain controls generated from know
 signals/spillover. It exercises **FSC/SSC → singlets → live → GFP, mScarlet, Cy5**.
 The fluorescence gates are parallel children of live cells, not a serial chain.
 
-The desktop editor uses **Manrope and Playfair Display**, Deliverome's berry/coral
-palette, native Qt controls and an embedded Matplotlib plot. Fonts are bundled
-for offline use. Choose a population in the sidebar, then drag its handles.
-**Edit gate / Pan / Zoom / Fit view** separate drawing from navigation.
-For histograms, choose **Above threshold**, **Below threshold**, or **Between
-bounds**, and drag or enter exact transformed coordinates. Typed thresholds apply
-when you press Apply, save, or switch gates. **Review & next** advances through
-the workflow; parent edits invalidate descendant review flags. Undo/Redo restore
-geometry, review flags, mappings and compensation together.
+The desktop workbench uses **Manrope and Playfair Display**, native Qt controls
+and Matplotlib plots. Open a screen with:
 
-**Save & close** writes the complete recipe atomically and returns to the CLI.
-Closing or cancelling with edits offers Save / Discard / Cancel. An externally
-changed recipe is never overwritten. Missing dyes show a detector chooser and
-require explicit confirmation of the mapping. **View / change matrix…** displays
-the current matrix and opens a native file chooser for imports. Counts always
-use all events, including while editing.
+```bash
+agentflow edit --samples local-examples/synthetic/workflow/samples.csv \
+  --recipe local-examples/synthetic/workflow/recipe.json --gate live
+```
+
+See several populations at once in the clickable gallery, compare samples with
+common axes, or click a plate well to select its sample. The main plot supports
+scatter, density, contours and group-colored overlays. Detector names stay visible;
+the Detectors dialog lists acquired detectors, marker annotations and dye roles.
+Point size, opacity, scroll zoom and larger gate handles improve direct editing.
+Histogram threshold fields use signal units matching the axes. Display previews
+include linear/asinh/logicle; gate counts remain unchanged by view settings.
+
+**Review & next**, undo/redo, and **Save & close** work across the shared recipe.
+Close prompts for unsaved gate edits; external recipe changes are never overwritten.
+The synthetic demo includes a clearly labelled dummy live/dead population on BV1-A.
+
+[Screen workflow, sample-sheet schema, plotting behavior and plate summaries](docs/screen-workflow.md)
+include reproducible commands and current limitations.
 
 For headless analysis, `uv sync` omits Qt. On minimal Linux installations, the
 desktop extra also needs the system libraries `libegl1`, `libopengl0`, and

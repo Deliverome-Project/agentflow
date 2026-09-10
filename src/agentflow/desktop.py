@@ -63,6 +63,7 @@ class GateWindow(W.QMainWindow):
         layout = W.QVBoxLayout(root)
         layout.setContentsMargins(28, 20, 28, 20)
         layout.setSpacing(16)
+        self.root_layout = layout
         header = W.QHBoxLayout()
         header.addWidget(label("agentflow", "brand"))
         header.addSpacing(18)
@@ -72,7 +73,8 @@ class GateWindow(W.QMainWindow):
             header.addWidget(label("DUMMY / EXAMPLE", "badge"))
         layout.addLayout(header)
         body = W.QHBoxLayout()
-        body.setSpacing(24)
+        body.setSpacing(18)
+        self.body_layout = body
         layout.addLayout(body, 1)
         sidebar = W.QVBoxLayout()
         side = W.QWidget()
@@ -87,6 +89,7 @@ class GateWindow(W.QMainWindow):
         sidebar.addWidget(self.gates, 1)
         sidebar.addWidget(label("SAMPLE", "eyebrow"))
         sample_name = label(str(prepared.sample.id), "muted")
+        self.sample_label = sample_name
         sample_name.setWordWrap(True)
         sidebar.addWidget(sample_name)
         sidebar.addWidget(label(f"{prepared.sample.event_count:,} acquired events", "muted"))
@@ -99,6 +102,7 @@ class GateWindow(W.QMainWindow):
         body.addWidget(side)
         main = W.QVBoxLayout()
         main.setSpacing(10)
+        self.main_layout = main
         body.addLayout(main, 1)
         self.title = label("", "title")
         self.subtitle = label("", "muted")
@@ -302,7 +306,7 @@ class GateWindow(W.QMainWindow):
         if uncertain:
             self.subtitle.setText(self.subtitle.text() + "  ·  Dye mapping unconfirmed")
         parent = evaluate(self.state.prepared, self.state.recipe)[gate["parent"]]
-        draw_population(self.ax, self.state.prepared, gate, parent)
+        self.draw_active(gate, parent)
         for axis, channel in zip((self.ax.xaxis, self.ax.yaxis), gate["channels"]):
             axis.set_label_text(f"{channel}  ·  {self.state.recipe['transforms'][channel]['kind']}")
         kind = gate["kind"]
@@ -314,7 +318,8 @@ class GateWindow(W.QMainWindow):
                 self.polygon,
                 useblit=True,
                 props={"color": CORAL, "linewidth": 2},
-                handle_props={"markerfacecolor": "white", "markeredgecolor": BERRY},
+                handle_props={"markerfacecolor": "white", "markeredgecolor": BERRY, "markersize": 8},
+                grab_range=15,
             )
             self.selector.verts = gate["vertices"]
             help_text = "Drag a vertex to reshape. Shift-drag moves the gate; click to draw a new polygon."
@@ -328,11 +333,19 @@ class GateWindow(W.QMainWindow):
                 interactive=True,
                 useblit=True,
                 button=[1],
+                grab_range=15,
+                handle_props={"markersize": 8},
                 props={"facecolor": CORAL, "edgecolor": BERRY, "alpha": 0.2, "linewidth": 2},
             )
             self.selector.extents = gate["bounds"]
             help_text = (
                 "Drag a corner or edge to resize. Drag inside to move; drag outside to draw a new gate."
+            )
+        elif kind == "boolean":
+            help_text = (
+                "Combined population: "
+                + (" " + gate["operation"].upper() + " ").join(gate["references"])
+                + ". Adjust its defining gates to change membership."
             )
         else:
             low, high = gate["bounds"]
@@ -353,7 +366,8 @@ class GateWindow(W.QMainWindow):
                 interactive=True,
                 useblit=True,
                 drag_from_anywhere=True,
-                props={"facecolor": CORAL, "alpha": 0.22},
+                props={"facecolor": CORAL, "alpha": 0.1},
+                handle_props={"color": BERRY, "linewidth": 2},
             )
             xmin, xmax = self.ax.get_xlim()
             self.selector.extents = (xmin if low is None else low, xmax if high is None else high)
@@ -364,7 +378,14 @@ class GateWindow(W.QMainWindow):
         )
         self.edit_mode()
         self.refresh()
+        self.finish_plot(gate)
         self.canvas.draw_idle()
+
+    def draw_active(self, gate, parent):
+        draw_population(self.ax, self.state.prepared, gate, parent)
+
+    def finish_plot(self, gate):
+        pass
 
     def refresh(self):
         counts = self.state.counts()
@@ -395,6 +416,10 @@ class GateWindow(W.QMainWindow):
         self.undo_button.setEnabled(bool(self.state.history))
         self.redo_button.setEnabled(bool(self.state.future))
         self.save_button.setText("Save changes & close" if self.state.dirty else "Save & close")
+        self.after_refresh()
+
+    def after_refresh(self):
+        pass
 
     def perform(self, action, redraw=True):
         try:
@@ -498,7 +523,7 @@ class GateWindow(W.QMainWindow):
     def fit_view(self):
         self.show_gate(self.active_name)
 
-    def matrix_dialog(self):
+    def matrix_dialog(self, allow_import=True):
         dialog = W.QDialog(self)
         dialog.setWindowTitle("Compensation")
         dialog.resize(640, 420)
@@ -535,7 +560,12 @@ class GateWindow(W.QMainWindow):
                 except (ValueError, OSError, KeyError, TypeError) as error:
                     info.setText(str(error))
 
-        layout.addWidget(button("Import matrix…", load, True))
+        if allow_import:
+            layout.addWidget(button("Import matrix…", load, True))
+        else:
+            info.setText(
+                "Assigned by compensation_path in the sample sheet. Change that assignment to use another matrix."
+            )
         layout.addWidget(button("Done", dialog.accept))
         dialog.exec()
 

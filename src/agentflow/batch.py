@@ -15,6 +15,7 @@ from .engine import digest, evaluate, prepare, save_recipe, summarize, validate
 from .plots import save_qc, save_time_qc
 from .quality import sample_quality
 from .reporting import write_report
+from .samples import read_samples, sample_recipe
 from .vendor_info import vendor_identity
 
 
@@ -32,6 +33,10 @@ def run_batch(samples, recipe_path, output):
         or (manifest.sample_id.str.strip() == "").any()
     ):
         raise ValueError("Sample IDs must be nonempty and unique; provide at least one sample")
+    records = read_samples(samples)
+    compensation_inputs = {
+        r["compensation_path"]: digest(r["compensation_path"]) for r in records if r.get("compensation_path")
+    }
     out = Path(output).resolve()
     if out.exists():
         raise ValueError("Output already exists; choose a new run directory")
@@ -39,16 +44,18 @@ def run_batch(samples, recipe_path, output):
     staging = Path(tempfile.mkdtemp(prefix=".agentflow-", dir=out.parent))
     rows, provenance = [], []
     try:
-        for index, record in enumerate(manifest.to_dict("records")):
+        for index, record in enumerate(records):
             path = Path(record["fcs_path"])
             if not path.is_absolute():
                 path = Path(samples).resolve().parent / path
             before = digest(path)
-            prepared = prepare(path, recipe)
-            masks = evaluate(prepared, recipe)
+            effective = sample_recipe(recipe, record)
+            effective.setdefault("display", {})["color"] = record["color"]
+            prepared = prepare(path, effective)
+            masks = evaluate(prepared, effective)
             if digest(path) != before:
                 raise ValueError(f"{path}: input changed during analysis")
-            stats = summarize(prepared, recipe, masks)
+            stats = summarize(prepared, effective, masks)
             stats.insert(0, "sample_id", record["sample_id"])
             for key, value in record.items():
                 if key not in ("sample_id", "fcs_path"):
@@ -59,6 +66,7 @@ def run_batch(samples, recipe_path, output):
                 {
                     "sample_id": record["sample_id"],
                     "sha256": before,
+                    "signal_space": "raw" if matrix is None else "compensated",
                     "compensation": None
                     if matrix is None
                     else {"detectors": matrix.detectors, "values": matrix.matrix.tolist()},
@@ -66,10 +74,12 @@ def run_batch(samples, recipe_path, output):
                     "quality": sample_quality(prepared),
                 }
             )
-            save_qc(prepared, recipe, masks, staging / f"gates-{index + 1:04d}.png", record["sample_id"])
+            save_qc(prepared, effective, masks, staging / f"gates-{index + 1:04d}.png", record["sample_id"])
             save_time_qc(prepared, staging / f"time-{index + 1:04d}.png")
         if Path(recipe_path).read_bytes() != recipe_bytes or Path(samples).read_bytes() != manifest_bytes:
             raise ValueError("Recipe or sample sheet changed during analysis")
+        if any(digest(p) != checksum for p, checksum in compensation_inputs.items()):
+            raise ValueError("Assigned compensation matrix changed during analysis")
         save_recipe(staging / "recipe.json", recipe)
         (staging / "samples.csv").write_bytes(manifest_bytes)
         pd.concat(rows, ignore_index=True).to_csv(staging / "summary.csv", index=False)
@@ -77,6 +87,7 @@ def run_batch(samples, recipe_path, output):
             json.dumps(
                 {
                     "inputs": provenance,
+                    "compensation_inputs_sha256": compensation_inputs,
                     "recipe_sha256": hashlib.sha256(recipe_bytes).hexdigest(),
                     "samples_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
                     "python": platform.python_version(),
@@ -94,7 +105,13 @@ def run_batch(samples, recipe_path, output):
                             "matplotlib",
                         ]
                     },
-                    "signal_space": "raw" if recipe["compensation"]["mode"] == "none" else "compensated",
+                    "signal_space": (
+                        "per-sample; see inputs"
+                        if compensation_inputs
+                        else "raw"
+                        if recipe["compensation"]["mode"] == "none"
+                        else "compensated"
+                    ),
                     "summary": "Median signal before display transformations; counts use all events",
                 },
                 indent=2,
@@ -102,6 +119,19 @@ def run_batch(samples, recipe_path, output):
             )
             + "\n"
         )
+        pd.DataFrame(
+            [
+                {
+                    "sample_id": p["sample_id"],
+                    "group": p["metadata"]["group"],
+                    "identity_compensation": p["quality"]["identity_compensation"],
+                    "uncompensated": p["quality"]["uncompensated"],
+                    "time_nonmonotonic": p["quality"]["time_nonmonotonic"],
+                    "upper_range_events": json.dumps(p["quality"]["upper_range_events"]),
+                }
+                for p in provenance
+            ]
+        ).to_csv(staging / "quality.csv", index=False)
         write_report(staging, recipe, pd.concat(rows, ignore_index=True), provenance)
         if out.exists():
             raise ValueError("Output appeared during analysis; choose a new run directory")

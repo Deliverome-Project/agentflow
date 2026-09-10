@@ -42,7 +42,7 @@ def inspect_sample(path):
 def mark_unreviewed(recipe, name=None):
     affected = {name} if name else {g["name"] for g in recipe["gates"]}
     for gate in recipe["gates"]:
-        if gate["parent"] in affected:
+        if gate["parent"] in affected or set(gate.get("references", [])) & affected:
             affected.add(gate["name"])
         if gate["name"] in affected:
             gate["reviewed"] = False

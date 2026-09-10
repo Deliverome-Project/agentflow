@@ -27,7 +27,8 @@ def parser():
     for role in ("live", "gfp", "mscarlet", "cy5"):
         init.add_argument("--" + role, help="Acquired detector to assign explicitly")
     edit = commands.add_parser("edit", help="Open the full gate workflow or a named gate")
-    edit.add_argument("sample")
+    edit.add_argument("sample", nargs="?", help="One FCS file; use --samples for a screen")
+    edit.add_argument("--samples", help="Sample sheet CSV with group/color and optional compensation_path")
     edit.add_argument("--recipe", required=True)
     edit.add_argument("--gate")
     edit.add_argument("--x")
@@ -39,6 +40,16 @@ def parser():
     run.add_argument("samples")
     run.add_argument("--recipe", required=True)
     run.add_argument("--out", required=True)
+    run.add_argument("--cache", help="Reuse verified identical runs from a local cache directory")
+    screen = commands.add_parser(
+        "screen", help="Summarize an analyzed screen by plate, controls and replicate"
+    )
+    screen.add_argument("run")
+    screen.add_argument("--out", required=True)
+    screen.add_argument("--gate", required=True)
+    screen.add_argument("--metric", default="percent_parent")
+    screen.add_argument("--min-events", type=int, default=100)
+    screen.add_argument("--hit-threshold", type=float)
     check = commands.add_parser("validate", help="Validate a saved recipe")
     check.add_argument("recipe")
     export = commands.add_parser("export-gml", help="Export gates, transforms and resolved compensation")
@@ -59,6 +70,23 @@ def parser():
 
 
 def open_editor(args):
+    if bool(args.sample) == bool(args.samples):
+        raise ValueError("Provide either one FCS sample or --samples samples.csv")
+    from .samples import read_samples
+
+    records = (
+        read_samples(args.samples)
+        if args.samples
+        else [
+            {
+                "sample_id": Path(args.sample).name,
+                "fcs_path": str(Path(args.sample).resolve()),
+                "group": "Sample",
+                "color": "#922038",
+            }
+        ]
+    )
+    sample_path = records[0]["fcs_path"]
     path = Path(args.recipe)
     if path.exists():
         recipe = load_recipe(path)
@@ -76,7 +104,7 @@ def open_editor(args):
         channels = [args.x] if args.kind == "range" else [args.x, args.y]
         for channel in channels:
             recipe["transforms"].setdefault(channel, {"kind": "linear"})
-        prepared = prepare(args.sample, recipe)
+        prepared = prepare(sample_path, recipe)
         masks = evaluate(prepared, recipe)
         if args.parent not in masks or not masks[args.parent].any():
             raise ValueError("Parent must exist and contain events")
@@ -96,10 +124,9 @@ def open_editor(args):
             gate["bounds"] = [float(low[0]), float(high[0])]
         recipe["gates"].append(gate)
     validate(recipe)
-    prepared = prepare(args.sample, recipe)
-    from .desktop import run_editor
+    from .workbench import run_workbench
 
-    saved = run_editor(prepared, recipe, args.gate, path)
+    saved = run_workbench(records, recipe, args.gate, path)
     print(json.dumps({"status": "saved" if saved else "cancelled", "recipe": str(path)}))
     return 0 if saved else 2
 
@@ -122,7 +149,17 @@ def main(argv=None):
                 json.dumps({"status": "created", "output": args.out, "review": "draft gates require review"})
             )
         elif args.command == "run":
-            run_batch(args.samples, args.recipe, args.out)
+            if args.cache:
+                from .cache import run_cached
+
+                run_cached(args.samples, args.recipe, args.out, args.cache)
+            else:
+                run_batch(args.samples, args.recipe, args.out)
+        elif args.command == "screen":
+            from .screening import screen_report
+
+            screen_report(args.run, args.out, args.gate, args.metric, args.min_events, args.hit_threshold)
+            print(json.dumps({"status": "complete", "output": args.out}))
         elif args.command == "validate":
             load_recipe(args.recipe)
             print(json.dumps({"status": "valid"}))
