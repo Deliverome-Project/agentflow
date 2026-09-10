@@ -38,7 +38,7 @@ def setup_plots():
 def desktop_style():
     return f"""
     QWidget {{ font-family: "Manrope"; font-size: 13px; color: {INK}; }}
-    QMainWindow, QDialog, QWidget#root {{ background: {BG}; }}
+    QMainWindow, QDialog, QWidget#root, QWidget#analysis_panel {{ background: {BG}; }}
     QLabel {{ background: transparent; }}
     QLabel#brand {{ font-family: "Playfair Display"; font-size: 32px; color: {BERRY}; }}
     QLabel#title {{ font-family: "Playfair Display"; font-size: 30px; }}
@@ -47,6 +47,10 @@ def desktop_style():
     QLabel#metric {{ font-family: "Playfair Display"; font-size: 30px; color: {BERRY}; }}
     QLabel#badge {{ background: {SOFT}; color: {BERRY}; border-radius: 6px; padding: 6px 10px; }}
     QFrame#card {{ background: white; border: 1px solid {LINE}; border-radius: 12px; }}
+    QTreeWidget {{ background: transparent; border: none; outline: none; }}
+    QTreeWidget::item {{ padding: 8px 2px; border-radius: 6px; }}
+    QTreeWidget::item:selected {{ color: {BERRY}; background: {SOFT}; }}
+    QTreeWidget::item:hover {{ background: #faf6f8; }}
     QListWidget {{ background: transparent; border: none; outline: none; }}
     QListWidget::item {{ padding: 14px 12px; margin: 3px 0; border-radius: 8px; }}
     QListWidget::item:selected {{ color: {BERRY}; background: {SOFT}; }}

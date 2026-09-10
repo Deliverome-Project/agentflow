@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .engine import digest, evaluate, prepare, save_recipe, validate
 from .overrides import effective_recipe
+from .provenance import save_snapshot
 from .workflow import add_reporter, mark_unreviewed
 
 
@@ -37,6 +38,7 @@ class EditorState:
         self.history.append(copy.deepcopy(self.recipe))
         self.future.clear()
         self.recipe = candidate
+        self.saved = False
         if reprepare:
             self.prepared = prepared
 
@@ -116,6 +118,7 @@ class EditorState:
             prepared = prepare(self.prepared.sample, candidate)
             target.append(copy.deepcopy(self.recipe))
             self.recipe = source.pop()
+            self.saved = False
             self.prepared = prepared
 
     def counts(self):
@@ -129,3 +132,6 @@ class EditorState:
         self.saved = True
         self.initial = copy.deepcopy(self.recipe)
         self.original_hash = digest(self.path)
+        save_snapshot(
+            self.path.with_suffix(".reproducibility.yaml"), self.recipe, recipe_sha256=self.original_hash
+        )

@@ -2,11 +2,12 @@
 
 import copy
 import re
+from pathlib import Path
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 from PySide6 import QtWidgets as W
 
 from .desktop import TITLES, GateWindow, button, label
@@ -29,12 +30,25 @@ class ScreenWindow(GateWindow):
         self.resize(1540, 960)
         self.setMinimumSize(1180, 800)
         top = W.QHBoxLayout()
+        analysis_menu = W.QMenu(self)
+        analysis_menu.addAction("Open analysis…", self.open_analysis)
+        analysis_menu.addAction("Save and keep editing", lambda: self.save_changes(close=False))
+        analysis_menu.addAction("Save and run all samples…", self.run_analysis)
+        analysis_button = W.QPushButton("Analysis")
+        analysis_button.setMenu(analysis_menu)
+        top.addWidget(analysis_button)
         top.addWidget(label("SAMPLE"))
         self.sample_choice = W.QComboBox()
         for r in records:
             self.sample_choice.addItem(f"{r['sample_id']} · {r['group']}")
         self.sample_choice.currentIndexChanged.connect(self.switch_sample)
         top.addWidget(self.sample_choice, 1)
+        self.previous_sample = button("‹", lambda: self.step_sample(-1))
+        self.previous_sample.setToolTip("Previous sample in the comparison group")
+        self.next_sample = button("›", lambda: self.step_sample(1))
+        self.next_sample.setToolTip("Next sample in the comparison group")
+        top.addWidget(self.previous_sample)
+        top.addWidget(self.next_sample)
         top.addWidget(label("COMPARE"))
         self.group_choice = W.QComboBox()
         self.group_choice.addItem("All groups")
@@ -59,10 +73,23 @@ class ScreenWindow(GateWindow):
         self.edit_scope.currentIndexChanged.connect(self.change_scope)
         scopes.addWidget(self.edit_scope)
         scopes.addWidget(button("Reset selected exception", self.reset_exception))
+        scopes.addWidget(button("Next draft →", self.next_draft))
+        self.focus_plot = W.QCheckBox("Focus plot")
+        self.focus_plot.setToolTip("Hide comparison thumbnails to enlarge the editable plot")
+        self.focus_plot.toggled.connect(self.toggle_focus)
+        scopes.addWidget(self.focus_plot)
         scopes.addStretch()
         scopes.addWidget(button("Pinned controls…", self.pin_dialog))
         scopes.addWidget(button("Calculate compensation…", self.compensation_wizard))
         self.root_layout.insertLayout(3, scopes)
+        display_panel = W.QWidget()
+        display_layout = W.QVBoxLayout(display_panel)
+        display_layout.setContentsMargins(0, 0, 0, 0)
+        display_panel.hide()
+        self.display_panel = display_panel
+        display_toggle = W.QCheckBox("Plot appearance && axes")
+        display_toggle.toggled.connect(display_panel.setVisible)
+        self.main_layout.insertWidget(2, display_toggle)
         settings = W.QHBoxLayout()
         self.plot_type = W.QComboBox()
         self.plot_type.addItems(["Scatter", "Density", "Contour"])
@@ -71,7 +98,8 @@ class ScreenWindow(GateWindow):
         self.histogram_label = label("Histogram")
         settings.addWidget(self.histogram_label)
         self.histogram_label.hide()
-        settings.addWidget(label("Point size"))
+        self.point_size_label = label("Point size")
+        settings.addWidget(self.point_size_label)
         self.point_size = W.QSpinBox()
         self.point_size.setRange(1, 35)
         self.point_size.setValue(8)
@@ -88,7 +116,7 @@ class ScreenWindow(GateWindow):
         self.normalization.addItems(["Event counts", "Unit area", "% of peak"])
         self.normalization.currentIndexChanged.connect(self.redraw)
         settings.addWidget(self.normalization)
-        self.main_layout.insertLayout(2, settings)
+        display_layout.addLayout(settings)
         axes = W.QHBoxLayout()
         axes.addWidget(label("Display axes"))
         self.x_scale, self.y_scale = W.QComboBox(), W.QComboBox()
@@ -98,14 +126,23 @@ class ScreenWindow(GateWindow):
             combo.currentIndexChanged.connect(self.redraw)
             axes.addWidget(combo)
         axes.addWidget(button("Use gating axes", self.gating_axes))
+        self.parent_button = button("↑ Parent", self.select_parent)
+        self.parent_button.setToolTip("Select the upstream population")
+        self.main_layout.takeAt(0)
+        heading = W.QHBoxLayout()
+        heading.addWidget(self.title, 1)
+        heading.addWidget(self.parent_button)
+        self.main_layout.insertLayout(0, heading)
         axes.addStretch()
-        self.main_layout.insertLayout(3, axes)
+        display_layout.addLayout(axes)
+        self.main_layout.insertWidget(3, display_panel)
         gallery_panel = W.QWidget()
+        self.gallery_panel = gallery_panel
         gallery_panel.setMinimumWidth(310)
         gallery_layout = W.QVBoxLayout(gallery_panel)
         gallery_layout.setContentsMargins(0, 0, 0, 0)
         self.gallery_mode = W.QComboBox()
-        self.gallery_mode.addItems(["All populations", "Compare samples", "Plate map"])
+        self.gallery_mode.addItems(["All populations", "Compare samples", "Plate map", "Ancestry"])
         self.gallery_mode.currentIndexChanged.connect(self.request_gallery)
         gallery_layout.addWidget(self.gallery_mode)
         self.plate_metric = W.QComboBox()
@@ -148,7 +185,109 @@ class ScreenWindow(GateWindow):
         self.point_size.setValue(display.get("point_size", 8))
         self.opacity.setValue(display.get("opacity", 65))
         self.ready = True
+        self.gallery_mode.setCurrentText(display.get("gallery_mode", "All populations"))
+        self.focus_plot.setChecked(display.get("focus_plot", False))
         self.show_gate(self.active_name)
+
+    def open_analysis(self):
+        from .engine import load_recipe
+        from .launcher import Launcher
+
+        dialog = Launcher()
+        if dialog.exec() == W.QDialog.Accepted:
+            path, records = dialog.selection
+            window = ScreenWindow(records, load_recipe(path), None, path)
+            self.open_windows = getattr(self, "open_windows", []) + [window]
+            window.show()
+
+    def run_analysis(self):
+        parent = W.QFileDialog.getExistingDirectory(
+            self, "Choose results location · a new run folder will be created"
+        )
+        if not parent or not self.save_changes(close=False):
+            return
+        index = 1
+        while (Path(parent) / f"run-{index:03d}").exists():
+            index += 1
+        self.start_analysis(Path(parent) / f"run-{index:03d}")
+
+    def start_analysis(self, output):
+        from .desktop_jobs import AnalysisJob
+
+        self.analysis_job = AnalysisJob(copy.deepcopy(self.records), self.state.path, output, self)
+        self.analysis_progress = W.QProgressDialog("Analyzing all samples…", "", 0, 0, self)
+        self.analysis_progress.setCancelButton(None)
+        self.analysis_progress.setWindowModality(QtCore.Qt.WindowModal)
+        self.analysis_progress.setWindowTitle("Running saved analysis")
+        self.centralWidget().setEnabled(False)
+        self.analysis_error = None
+        self.analysis_report = None
+        self.analysis_job.completed.connect(lambda path: setattr(self, "analysis_report", path))
+        self.analysis_job.failed.connect(lambda message: setattr(self, "analysis_error", message))
+        self.analysis_job.finished.connect(self.finish_analysis)
+        self.analysis_progress.show()
+        self.analysis_job.start()
+
+    def finish_analysis(self):
+        self.analysis_progress.close()
+        self.centralWidget().setEnabled(True)
+        if self.analysis_error:
+            self.message.setText(f"Analysis failed: {self.analysis_error}")
+        else:
+            self.message.setText(f"Analysis complete: {self.analysis_report}")
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(self.analysis_report))
+
+    def closeEvent(self, event):
+        if getattr(self, "analysis_job", None) is not None and self.analysis_job.isRunning():
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, "ready", False):
+            self.request_gallery()
+
+    def toggle_focus(self, checked):
+        if not self.ready:
+            return
+        self.gallery_panel.setVisible(not checked)
+        if not checked:
+            self.request_gallery()
+        self.canvas.draw_idle()
+
+    def next_draft(self):
+        start = self.names.index(self.active_name)
+        candidates = self.names[start + 1 :] + self.names[: start + 1]
+        for name in candidates:
+            gate = self.state.gate(name)
+            if gate is None or not gate.get("reviewed"):
+                self.gates.setCurrentRow(self.names.index(name))
+                return
+        self.message.setText("All populations in this sample are reviewed.")
+
+    def step_sample(self, step):
+        records = self.selected_records()
+        if not records:
+            return
+        index = records.index(self.record) if self.record in records else (-1 if step > 0 else len(records))
+        target = index + step
+        if 0 <= target < len(records):
+            self.sample_choice.setCurrentIndex(self.records.index(records[target]))
+
+    def select_parent(self):
+        gate = self.state.gate(self.active_name)
+        if gate and gate["parent"] in self.names:
+            self.gates.setCurrentRow(self.names.index(gate["parent"]))
+
+    def ancestry(self):
+        gates = {g["name"]: g for g in self.state.active_recipe["gates"]}
+        lineage = []
+        name = self.active_name
+        while name in gates:
+            lineage.append(gates[name])
+            name = gates[name]["parent"]
+        return lineage[::-1]
 
     def change_scope(self, index):
         if not self.ready:
@@ -215,6 +354,13 @@ class ScreenWindow(GateWindow):
             prepared, _ = self.session.get(self.record, self.state.recipe)
             self.state.prepared = prepared
             self.sample_label.setText(self.record["sample_id"] + "\n" + self.record["group"])
+            self.event_label.setText(f"{prepared.sample.event_count:,} acquired events")
+            records = self.selected_records()
+            index = records.index(self.record) if self.record in records else -1
+            self.previous_sample.setEnabled(bool(records) and index != 0)
+            self.next_sample.setEnabled(bool(records) and index != len(records) - 1)
+            gate = self.state.gate(name)
+            self.parent_button.setEnabled(bool(gate and gate["parent"] != "root"))
         super().show_gate(name)
         gate = self.state.gate(name)
         if self.ready and gate and gate["kind"] == "range":
@@ -332,7 +478,9 @@ class ScreenWindow(GateWindow):
         self.plot_type.setVisible(len(gate["channels"]) == 2)
         self.histogram_label.setVisible(len(gate["channels"]) == 1)
         self.normalization.setEnabled(len(gate["channels"]) == 1)
-        self.point_size.setEnabled(len(gate["channels"]) == 2 and self.plot_type.currentText() == "Scatter")
+        show_points = len(gate["channels"]) == 2 and self.plot_type.currentText() == "Scatter"
+        self.point_size.setVisible(show_points)
+        self.point_size_label.setVisible(show_points)
         apply_axes(self.ax, gate["channels"], self.state.recipe, modes)
         self.picked = {}
         for other in self.state.active_recipe["gates"]:
@@ -357,6 +505,7 @@ class ScreenWindow(GateWindow):
                 self.help.text()
                 + " Scroll to zoom. Scatter displays up to 20,000 events per sample; counts use all events."
             )
+        self.help.setToolTip(self.help.text())
         self.edit_button.setEnabled(not preview)
         self.bounds_widget.setEnabled(not preview)
         self.y_scale.setEnabled(len(gate["channels"]) == 2)
@@ -383,7 +532,7 @@ class ScreenWindow(GateWindow):
             self.request_gallery()
 
     def request_gallery(self, *_):
-        if self.ready and not self.gallery_pending:
+        if self.ready and not self.focus_plot.isChecked() and not self.gallery_pending:
             self.gallery_pending = True
             QtCore.QTimer.singleShot(0, self.update_gallery)
 
@@ -411,12 +560,16 @@ class ScreenWindow(GateWindow):
             return
         compare = self.gallery_mode.currentIndex() == 1
         items = self.selected_records() if compare else self.state.active_recipe["gates"]
+        if self.gallery_mode.currentText() == "Ancestry":
+            items = self.ancestry()
         self.gallery_page.setMaximum(max(1, (len(items) + 11) // 12))
         start = (self.gallery_page.value() - 1) * 12
         all_items = items
         items = items[start : start + 12]
         n = len(items)
-        self.gallery_canvas.setMinimumHeight(max(400, ((n + 1) // 2) * 200))
+        columns = 1 if self.gallery_canvas.width() < 420 else 2
+        rows = max(1, (n + columns - 1) // columns)
+        self.gallery_canvas.setMinimumHeight(rows * 260)
         shared_limits = None
         active = self.state.gate(self.active_name)
         if compare and active:
@@ -438,7 +591,7 @@ class ScreenWindow(GateWindow):
             gate = next(
                 g for g in sample_recipe(self.state.recipe, record)["gates"] if g["name"] == gate["name"]
             )
-            ax = self.gallery_figure.add_subplot(max(1, (n + 1) // 2), 2, i + 1)
+            ax = self.gallery_figure.add_subplot(rows, columns, i + 1)
             self.gallery_axes[ax] = ("sample", record["sample_id"]) if compare else ("gate", gate["name"])
             try:
                 prepared, masks = self.session.get(record, self.state.recipe)
@@ -586,11 +739,16 @@ class ScreenWindow(GateWindow):
             self.selector.set_active(False)
 
     def save(self):
+        self.save_changes(close=True)
+
+    def save_changes(self, close=False):
         try:
             self.flush_bounds()
             candidate = copy.deepcopy(self.state.recipe)
             candidate["display"] = {
                 "pinned_samples": sorted(self.pinned),
+                "focus_plot": self.focus_plot.isChecked(),
+                "gallery_mode": self.gallery_mode.currentText(),
                 "plot_type": self.plot_type.currentText(),
                 "point_size": self.point_size.value(),
                 "opacity": self.opacity.value(),
@@ -600,9 +758,13 @@ class ScreenWindow(GateWindow):
             }
             self.state.apply(candidate)
             self.state.save()
-            self.close()
+            self.message.setText("Saved. You can continue editing or run this analysis.")
+            if close:
+                self.close()
+            return True
         except (ValueError, OSError, TypeError) as error:
             self.message.setText(f"Not saved: {error}")
+            return False
 
     def detectors_dialog(self):
         dialog = W.QDialog(self)
@@ -674,7 +836,21 @@ class ScreenWindow(GateWindow):
         x.setCurrentText(active["channels"][0])
         y.setCurrentText(active["channels"][-1])
         parent.addItems(["root"] + [g["name"] for g in self.state.recipe["gates"]])
-        parent.setCurrentText(active["parent"])
+        relationship = W.QComboBox()
+        relationship.setObjectName("population_relationship")
+        relationship.addItems(
+            ["Child of selected population", "Sibling of selected population", "Choose parent"]
+        )
+        parent.setCurrentText(active["name"])
+        parent.setEnabled(False)
+
+        def choose_relationship(index):
+            parent.setEnabled(index == 2)
+            if index != 2:
+                parent.setCurrentText(active["name"] if index == 0 else active["parent"])
+
+        relationship.currentIndexChanged.connect(choose_relationship)
+        form.addRow("Create as", relationship)
         kind.addItems(["rectangle", "polygon", "range", "boolean"])
         for title, field in [
             ("Name", name),
@@ -702,6 +878,8 @@ class ScreenWindow(GateWindow):
         kind.currentTextChanged.connect(
             lambda text: [form.setRowVisible(field, text == "boolean") for field in [left, right, operation]]
         )
+        kind.currentTextChanged.connect(lambda text: form.setRowVisible(y, text != "range"))
+        kind.setCurrentText("range" if len(active["channels"]) == 1 else "rectangle")
         message = label("Choose channels and a parent, then reshape the draft gate in the plot.", "muted")
         message.setWordWrap(True)
         form.addRow(message)

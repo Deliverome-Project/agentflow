@@ -16,7 +16,9 @@ from .compensation import load_matrix
 from .editor_state import EditorState
 from .engine import evaluate
 from .plots import draw_population
+from .population_tree import PopulationTree
 from .theme import ASSETS, BERRY, CORAL, desktop_style, setup_plots
+from .threshold import ThresholdSelector
 from .workflow import ROLES
 
 TITLES = {
@@ -84,7 +86,7 @@ class GateWindow(W.QMainWindow):
         sidebar.addWidget(label("POPULATIONS", "eyebrow"))
         self.progress = label("", "muted")
         sidebar.addWidget(self.progress)
-        self.gates = W.QListWidget()
+        self.gates = PopulationTree()
         self.gates.currentRowChanged.connect(self.change_row)
         sidebar.addWidget(self.gates, 1)
         sidebar.addWidget(label("SAMPLE", "eyebrow"))
@@ -92,7 +94,8 @@ class GateWindow(W.QMainWindow):
         self.sample_label = sample_name
         sample_name.setWordWrap(True)
         sidebar.addWidget(sample_name)
-        sidebar.addWidget(label(f"{prepared.sample.event_count:,} acquired events", "muted"))
+        self.event_label = label(f"{prepared.sample.event_count:,} acquired events", "muted")
+        sidebar.addWidget(self.event_label)
         sidebar.addSpacing(20)
         sidebar.addWidget(label("COMPENSATION", "eyebrow"))
         self.compensation_label = label("", "muted")
@@ -103,12 +106,22 @@ class GateWindow(W.QMainWindow):
         main = W.QVBoxLayout()
         main.setSpacing(10)
         self.main_layout = main
-        body.addLayout(main, 1)
+        main_widget = W.QWidget(objectName="analysis_panel")
+        main_widget.setLayout(main)
+        main_scroll = W.QScrollArea()
+        main_scroll.setWidgetResizable(True)
+        main_scroll.setFrameShape(W.QFrame.NoFrame)
+        main_scroll.setWidget(main_widget)
+        main_scroll.setMinimumWidth(420)
+        self.main_scroll = main_scroll
+        body.addWidget(main_scroll, 1)
         self.title = label("", "title")
         self.subtitle = label("", "muted")
         main.addWidget(self.title)
         main.addWidget(self.subtitle)
         self.stack = W.QStackedWidget()
+        self.stack.setMinimumHeight(380)
+        self.stack.setSizePolicy(W.QSizePolicy.Expanding, W.QSizePolicy.Ignored)
         main.addWidget(self.stack, 1)
         plot_card = W.QFrame(objectName="card")
         card_layout = W.QVBoxLayout(plot_card)
@@ -125,15 +138,17 @@ class GateWindow(W.QMainWindow):
         self.review_badge = label("", "badge")
         tools.addWidget(self.review_badge)
         card_layout.addLayout(tools)
-        self.figure = Figure(figsize=(8, 5), facecolor="white")
+        self.figure = Figure(figsize=(8, 5), facecolor="white", layout="constrained")
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.ax = self.figure.add_subplot(111)
-        self.figure.subplots_adjust(left=0.12, right=0.97, bottom=0.15, top=0.94)
+        self.canvas.setMinimumHeight(260)
+        self.canvas.setSizePolicy(W.QSizePolicy.Expanding, W.QSizePolicy.Ignored)
         self.toolbar = NavigationToolbar2QT(self.canvas, self)
         self.toolbar.hide()
         card_layout.addWidget(self.canvas, 1)
         self.help = label("", "muted")
         self.help.setWordWrap(True)
+        self.help.setMaximumHeight(44)
         card_layout.addWidget(self.help)
         self.stack.addWidget(plot_card)
         pending = W.QFrame(objectName="card")
@@ -217,9 +232,7 @@ class GateWindow(W.QMainWindow):
         self.names = [n for n in order if n in actual + pending]
         self.names += [n for n in actual + pending if n not in self.names]
         self.gates.blockSignals(True)
-        self.gates.clear()
-        for n in self.names:
-            self.gates.addItem(TITLES.get(n, n))
+        self.gates.populate(self.names, self.state.recipe["gates"], TITLES)
         row = self.names.index(name) if name in self.names else 0
         self.gates.setCurrentRow(row)
         self.gates.blockSignals(False)
@@ -373,6 +386,12 @@ class GateWindow(W.QMainWindow):
             )
             xmin, xmax = self.ax.get_xlim()
             self.selector.extents = (xmin if low is None else low, xmax if high is None else high)
+            if low is None or high is None:
+                self.selector.set_visible(False)
+                self.selector.disconnect_events()
+                self.selector = ThresholdSelector(
+                    self.ax, high if low is None else low, low is None, self.span, BERRY
+                )
             help_text = "Drag the shaded edge to set a threshold, or enter an exact value below. Units are transformed."
         self.help.setText(help_text)
         self.note.setText(
@@ -395,7 +414,17 @@ class GateWindow(W.QMainWindow):
             gate = self.state.gate(name)
             suffix = "Not assigned" if gate is None else ("Reviewed" if gate.get("reviewed") else "Draft")
             count = "" if gate is None else f"  ·  {counts[name]:,}"
-            self.gates.item(i).setText(f"{i + 1:02}   {TITLES.get(name, name)}\n       {suffix}{count}")
+            exception = name in self.state.recipe.get("sample_overrides", {}).get(self.state.sample_id, {})
+            ownership = "Exception" if exception else "Shared"
+            detail = f"{suffix}{count}"
+            if gate:
+                detail += f" · {ownership}"
+            tooltip = f"{name} · {detail}"
+            if gate:
+                parent_count = counts[gate["parent"]]
+                percent = f"{100 * counts[name] / parent_count:.2f}%" if parent_count else "Not available"
+                tooltip += f"\nParent: {gate['parent']} · {percent} of parent\nDetectors: {', '.join(gate['channels'])}"
+            self.gates.set_population_text(i, TITLES.get(name, name), detail, tooltip)
         gate = self.state.gate(self.active_name)
         if gate:
             count, parent = counts[gate["name"]], counts[gate["parent"]]
@@ -450,9 +479,13 @@ class GateWindow(W.QMainWindow):
         )
 
     def span(self, low, high):
+        limits = self.ax.get_xlim(), self.ax.get_ylim()
         mode = self.range_mode.currentIndex()
         bounds = [None if mode == 1 else float(low), None if mode == 0 else float(high)]
         self.perform(lambda: self.state.geometry(self.active_name, "bounds", bounds))
+        self.ax.set_xlim(limits[0])
+        self.ax.set_ylim(limits[1])
+        self.canvas.draw_idle()
 
     def update_bound_fields(self):
         mode = self.range_mode.currentIndex()
@@ -594,7 +627,7 @@ class GateWindow(W.QMainWindow):
                 self.flush_bounds()
             except (ValueError, TypeError):
                 pending_invalid = True
-        if (self.state.dirty or pending_invalid) and not self.state.saved and not self.discarding:
+        if (self.state.dirty or pending_invalid) and not self.discarding:
             answer = W.QMessageBox.question(
                 self,
                 "Unsaved gate edits",

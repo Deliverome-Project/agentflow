@@ -16,6 +16,7 @@ from .workflow import inspect_sample, scaffold
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    commands.add_parser("gui", help="Open or import an analysis through the desktop launcher")
     inspect = commands.add_parser("inspect", help="Show acquired detectors, marker names and compensation")
     inspect.add_argument("sample")
     init = commands.add_parser("init", help="Create a draft workflow and sample sheet")
@@ -137,7 +138,11 @@ def open_editor(args):
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
-        if args.command == "inspect":
+        if args.command == "gui":
+            from .launcher import run_launcher
+
+            return run_launcher()
+        elif args.command == "inspect":
             print(json.dumps(inspect_sample(args.sample), indent=2))
         elif args.command == "init":
             scaffold(

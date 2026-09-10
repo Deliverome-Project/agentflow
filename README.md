@@ -4,10 +4,22 @@ An independent Python package for reproducible flow screens and few-channel
 experiments. It includes an editable copy of FlowKit, a CLI for batch analyses,
 and a Matplotlib desktop editor for human gate review.
 
-**Version 0.2 is a team-evaluation release.** Default gates are draft drawing aids.
+**Version 0.7 is a team-evaluation release.** Default gates are draft drawing aids.
 The example workflow is explicitly labelled **DUMMY / EXAMPLE — NOT VALIDATED**.
 A real laboratory workflow still needs approved controls, detector assignments,
 and gates. Unknown and unacquired channels are never silently fabricated.
+
+## Open the desktop
+
+```sh
+uv sync --extra gui
+uv run agentflow gui
+```
+
+Open an existing analysis folder or import FCS files. The Analysis menu saves,
+opens analyses, and runs the loaded sample set to a new report directory. Source
+FCS files remain unchanged. Recipes support JSON or YAML; sample sheets are CSV.
+Review all draft gates before interpreting results.
 
 ## Start with the complete synthetic example
 
@@ -143,7 +155,7 @@ vertices to a new signal space.
 ## Recipes and Python API
 
 See [recipe reference](docs/recipes.md) and [architecture](docs/architecture.md).
-Recipes are JSON and work well in Git. All transforms have fixed parameters;
+Recipes are JSON or YAML and work well in Git. All transforms have fixed parameters;
 rectangles, polygons, and one-dimensional ranges compile into FlowKit's native
 hierarchy. No independent GUI gating math is used.
 
@@ -164,6 +176,26 @@ uv add 'agentflow-cytometry @ git+https://github.com/Deliverome-Project/agentflo
 
 The private repository requires GitHub access. Replace `<commit-sha>` with the
 reviewed revision; nothing needs copying into deliverome-analysis.
+
+Every desktop save also writes `<recipe-name>.reproducibility.yaml` with the
+complete recipe, Agentflow version, source fingerprint, dependency versions, and
+Git commit and dirty status when running from a checkout. VCS installations record
+their installation commit. An ordinary wheel without VCS metadata reports a null
+commit (never a guessed one); its version and source fingerprint remain recorded.
+A dirty checkout requires retaining its source changes as well as the commit.
+Keep the snapshot beside the recipe: it is a generated export and is replaced
+on the next save. To edit it independently, copy it to a separate recipe file.
+
+Batch runs write `reproducibility.yaml` alongside `run.json`, including input
+hashes and resolved compensation. These snapshots can be replayed directly:
+
+```sh
+agentflow run samples.csv --recipe runs/previous/reproducibility.yaml --out runs/replay
+```
+
+Snapshots do not bundle FCS inputs or install the recorded environment. Retain
+the data and sample sheet, pin Agentflow to its recorded commit, and commit the
+consumer project's `uv.lock` for a reproducible installation.
 
 `agentflow validate recipe.json` checks a recipe. `agentflow export-gml sample.fcs
 --recipe recipe.json --out gates.xml` exports gates, transforms, and resolved
