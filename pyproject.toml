@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentflow-cytometry"
+version = "0.2.0"
+readme = "README.md"
+description = "Reproducible FlowKit analyses with an optional Matplotlib gate editor"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2,<3", "pandas>=2.2,<3", "matplotlib>=3.9,<4",
+    "anytree>=2.13", "bokeh>=3.5", "contourpy>=1.3.1",
+    "flowio>=1.4.0,<1.5", "flowutils>=1.2.2,<1.3", "lxml>=6.0",
+    "networkx>=3.3", "psutil>=7", "pyarrow>=18", "scipy>=1.14"
+]
+license-files = ["THIRD_PARTY_NOTICES.md", "src/agentflow/_vendor/flowkit/LICENSE"]
+
+[project.optional-dependencies]
+gui = ["PySide6>=6.7,<7"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.11"]
+
+[project.scripts]
+agentflow = "agentflow.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentflow"]
+
+[tool.ruff]
+line-length = 110
+extend-exclude = ["src/agentflow/_vendor/flowkit"]
