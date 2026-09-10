@@ -182,3 +182,17 @@ def test_default_singlet_band_does_not_expand_to_extreme_ratios(demo, tmp_path):
     vertices = np.array(gate["vertices"])
     ratios = vertices[:, 1] / vertices[:, 0]
     assert ratios.max() / ratios.min() == pytest.approx(1.25 / 0.75)
+
+
+def test_editor_resize_events_preserve_range_and_pending_panels(demo, tmp_path):
+    from matplotlib.backend_bases import ResizeEvent
+
+    recipe = json.loads((demo / "workflow/recipe.json").read_text())
+    path = tmp_path / "recipe.json"
+    save_recipe(path, recipe)
+    editor = GateEditor(prepare(demo / "sample-1.fcs", recipe), recipe, "gfp", path)
+    editor.fig.canvas.callbacks.exception_handler = None
+    ResizeEvent("resize_event", editor.fig.canvas)._process()
+    editor.fig.canvas.draw()
+    assert editor.gate["bounds"] == next(g for g in recipe["gates"] if g["name"] == "gfp")["bounds"]
+    plt.close(editor.fig)
