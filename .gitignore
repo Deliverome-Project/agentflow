@@ -9,3 +9,4 @@ dist/
 runs/
 demo/
 .DS_Store
+local-examples/

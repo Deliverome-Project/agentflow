@@ -14,3 +14,10 @@ jobs:
       - run: uv run pytest -q
         env:
           MPLBACKEND: Agg
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      - run: uv run --isolated --no-project --python 3.12 --with ./dist/agentflow_cytometry-0.2.0-py3-none-any.whl python scripts/wheel_smoke.py
