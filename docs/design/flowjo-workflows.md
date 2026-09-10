@@ -2,6 +2,10 @@
 
 Status: proposed design, based on Agentflow 0.5.0. The new YAML schema, Python
 objects and CLI commands below are interface proposals, not available commands.
+Implementation update: the population tree, ancestry gallery, parent/sample navigation
+and next-draft controls are implemented in 0.6.0. YAML workspaces, quadrants and
+the remaining proposed interfaces below are still planned.
+
 Existing JSON recipes and commands continue to work. This document defines the
 next implementation slices and their acceptance criteria.
 

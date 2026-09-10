@@ -16,6 +16,7 @@ from .compensation import load_matrix
 from .editor_state import EditorState
 from .engine import evaluate
 from .plots import draw_population
+from .population_tree import PopulationTree
 from .theme import ASSETS, BERRY, CORAL, desktop_style, setup_plots
 from .workflow import ROLES
 
@@ -84,7 +85,7 @@ class GateWindow(W.QMainWindow):
         sidebar.addWidget(label("POPULATIONS", "eyebrow"))
         self.progress = label("", "muted")
         sidebar.addWidget(self.progress)
-        self.gates = W.QListWidget()
+        self.gates = PopulationTree()
         self.gates.currentRowChanged.connect(self.change_row)
         sidebar.addWidget(self.gates, 1)
         sidebar.addWidget(label("SAMPLE", "eyebrow"))
@@ -92,7 +93,8 @@ class GateWindow(W.QMainWindow):
         self.sample_label = sample_name
         sample_name.setWordWrap(True)
         sidebar.addWidget(sample_name)
-        sidebar.addWidget(label(f"{prepared.sample.event_count:,} acquired events", "muted"))
+        self.event_label = label(f"{prepared.sample.event_count:,} acquired events", "muted")
+        sidebar.addWidget(self.event_label)
         sidebar.addSpacing(20)
         sidebar.addWidget(label("COMPENSATION", "eyebrow"))
         self.compensation_label = label("", "muted")
@@ -217,9 +219,7 @@ class GateWindow(W.QMainWindow):
         self.names = [n for n in order if n in actual + pending]
         self.names += [n for n in actual + pending if n not in self.names]
         self.gates.blockSignals(True)
-        self.gates.clear()
-        for n in self.names:
-            self.gates.addItem(TITLES.get(n, n))
+        self.gates.populate(self.names, self.state.recipe["gates"], TITLES)
         row = self.names.index(name) if name in self.names else 0
         self.gates.setCurrentRow(row)
         self.gates.blockSignals(False)
@@ -395,7 +395,17 @@ class GateWindow(W.QMainWindow):
             gate = self.state.gate(name)
             suffix = "Not assigned" if gate is None else ("Reviewed" if gate.get("reviewed") else "Draft")
             count = "" if gate is None else f"  ·  {counts[name]:,}"
-            self.gates.item(i).setText(f"{i + 1:02}   {TITLES.get(name, name)}\n       {suffix}{count}")
+            exception = name in self.state.recipe.get("sample_overrides", {}).get(self.state.sample_id, {})
+            ownership = "Exception" if exception else "Shared"
+            detail = f"{suffix}{count}"
+            if gate:
+                detail += f" · {ownership}"
+            tooltip = f"{name} · {detail}"
+            if gate:
+                parent_count = counts[gate["parent"]]
+                percent = f"{100 * counts[name] / parent_count:.2f}%" if parent_count else "Not available"
+                tooltip += f"\nParent: {gate['parent']} · {percent} of parent\nDetectors: {', '.join(gate['channels'])}"
+            self.gates.set_population_text(i, TITLES.get(name, name), detail, tooltip)
         gate = self.state.gate(self.active_name)
         if gate:
             count, parent = counts[gate["name"]], counts[gate["parent"]]

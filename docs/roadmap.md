@@ -7,7 +7,7 @@ and staged acceptance criteria. Its proposed interfaces are not implemented yet.
 | Capability | Current release | Next step / value for screens |
 |---|---|---|
 | Hierarchical gates | Polygon, rectangle, range and AND/OR co-expression; shared engine | Quadrant creation presets |
-| Gate review | Multi-sample galleries, pinned overlays, explicit sample exceptions, undo/redo, review flags | Validation against representative lab workflows |
+| Gate review | Collapsible population tree, ancestry gallery, next-draft/sample navigation, pinned overlays, sample exceptions, undo/redo | Validation against representative lab workflows |
 | Compensation | Embedded/imported matrices, interactive single-stain threshold review/calculation, before/after plots | Interactive cleanup gates, separate negative files; alternative estimators validated against lab controls |
 | Fluorescence display | Fixed recipes, original-unit ticks/thresholds, axis display previews | Editable transform parameters and reviewed polygon migration |
 | Templates | Shared recipe with explicit sample exceptions, missing-channel failures | Instrument/panel presets |
@@ -17,7 +17,7 @@ and staged acceptance criteria. Its proposed interfaces are not implemented yet.
 | Agent workflows | CLI JSON status, importable API, immutable run directories | Stable JSON Schema, recipe diff summaries and review automation |
 | Sharing/install | Private Git install, locked environment, tests and wheel build | Versioned releases after representative team validation |
 
-Recommended next work is lossless YAML configuration support, ancestry navigation
+Recommended next work is lossless YAML configuration support
 and orthogonal quadrants, followed by explicit analysis sets and reusable endpoint/report definitions.
 Control-cleanup editing and real-control validation remain required for scientific confidence.
 Do not add clustering, dimensionality reduction or a full workspace clone before

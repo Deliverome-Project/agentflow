@@ -185,3 +185,25 @@ method described in [compensation controls](compensation.md), including its
 limitations. A configured uncompensated cleanup recipe is supported and its eligible
 events appear in the preview. Drawing cleanup gates inside this dialog and separate
 unstained negative files are not implemented yet.
+
+## Population hierarchy and guided review
+
+The left sidebar is a collapsible tree reflecting actual parent/child gates.
+Selecting a nested population expands its ancestors. Hover a row for detector names,
+its denominator and percentage, and shared/exception review details. Renaming or
+creating populations continues to use the saved recipe; the tree is a view of it.
+
+Choose **Ancestry** in the gallery to show the selected population and its upstream
+chain in order. Click a thumbnail to select that population, or **↑ Parent** to
+move upstream. Boolean populations show their parent chain; their additional logical
+references are not represented as extra ancestry branches.
+
+The **‹ / ›** sample buttons follow the selected comparison group without wrapping
+at its ends. They preserve pending valid threshold edits before switching; invalid
+thresholds block navigation. **Next draft →** skips reviewed populations in the
+current sample and cycles to the next draft or unassigned role. It does not mark
+anything reviewed automatically. Use **Review & next** when approving a gate.
+
+**Focus plot** hides the right-hand gallery to give the editable plot more room.
+Turn it off to restore the gallery. The focus setting and gallery mode are saved
+with other display preferences; neither changes population membership.

@@ -201,3 +201,67 @@ def test_compensation_wizard_review_click_export(window, demo, tmp_path, monkeyp
     assert wizard.spec is None
     assert not wizard.apply_button.isEnabled()
     wizard.reject()
+
+
+def test_population_tree_ancestry_and_parent_navigation(window):
+    nodes = {name: window.gates.rows[i] for i, name in enumerate(window.names)}
+    assert nodes["singlets"].parent() is nodes["cells"]
+    assert nodes["gfp"].parent() is nodes["live"]
+    window.gates.setCurrentRow(window.names.index("gfp"))
+    window.gallery_mode.setCurrentText("Ancestry")
+    W.QApplication.processEvents()
+    assert [value[1] for value in window.gallery_axes.values()] == ["cells", "singlets", "live", "gfp"]
+    nodes["cells"].setExpanded(False)
+    window.select_parent()
+    assert window.active_name == "live"
+    assert nodes["cells"].isExpanded()
+    assert "Parent: singlets" in nodes["live"].toolTip(0)
+
+
+def test_sample_steps_respect_filters_and_flush_edits(window):
+    window.edit_scope.setCurrentIndex(1)
+    window.upper.setText("2000")
+    window.step_sample(1)
+    assert window.record["sample_id"] == "DUMMY-2"
+    assert "DUMMY-1" in window.state.recipe["sample_overrides"]
+    window.step_sample(-1)
+    assert float(window.upper.text()) == pytest.approx(2000)
+    window.group_choice.setCurrentText("High expression")
+    window.step_sample(1)
+    assert window.record["sample_id"] == "DUMMY-3"
+    assert not window.next_sample.isEnabled()
+    assert not window.previous_sample.isEnabled()
+
+
+def test_tree_rebuild_preserves_collapsed_branches(window):
+    cells = window.gates.rows[window.names.index("cells")]
+    window.gates.setCurrentRow(window.names.index("cells"))
+    cells.setExpanded(False)
+    window.rebuild("cells")
+    assert not window.gates.rows[window.names.index("cells")].isExpanded()
+
+
+def test_next_draft_skips_reviewed_and_keeps_masks(window):
+    before = window.state.counts()
+    window.state.review("gfp")
+    window.next_draft()
+    assert window.active_name == "mscarlet"
+    assert window.state.counts() == before
+
+
+def test_focus_plot_enlarges_canvas_and_saves_view(window):
+    before = window.canvas.width()
+    masks = window.state.counts()
+    window.gallery_mode.setCurrentText("Ancestry")
+    window.focus_plot.setChecked(True)
+    W.QApplication.processEvents()
+    assert window.gallery_panel.isHidden()
+    assert window.canvas.width() > before
+    assert window.state.counts() == masks
+    window.focus_plot.setChecked(False)
+    W.QApplication.processEvents()
+    assert not window.gallery_panel.isHidden()
+    assert len(window.gallery_axes) == 3
+    window.save()
+    saved = json.loads(window.state.path.read_text())
+    assert saved["display"]["gallery_mode"] == "Ancestry"
