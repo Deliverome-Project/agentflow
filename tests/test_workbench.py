@@ -633,7 +633,7 @@ def test_counts_and_gallery_fit_without_scrolling(window, size):
         assert top.y() >= 0
         assert top.y() + widget.height() < window.height()
     assert window.gallery_canvas.height() <= window.gallery_panel.height()
-    assert len(window.gallery_axes) >= 1
+    assert len(window.gallery_axes) >= 2
     window.gallery_canvas.draw()
     renderer = window.gallery_canvas.get_renderer()
     for ax in window.gallery_axes:
@@ -674,3 +674,23 @@ def test_dummy_histograms_open_between_and_scatter_exploration_is_read_only(wind
     assert window.state.gate("reporter_subset")["parent"] == "live"
     assert window.state.gate("reporter_subset")["channels"] == ["BL1-A", "RL1-A"]
     dialog.close()
+
+
+@pytest.mark.parametrize("size,minimum", [((980, 620), 2), ((1280, 720), 3), ((1440, 900), 3)])
+def test_compact_sample_comparison_shows_multiple_plots(window, size, minimum):
+    window.resize(*size)
+    window.gallery_mode.setCurrentText("Compare samples")
+    W.QApplication.processEvents()
+    window.update_gallery()
+    W.QApplication.processEvents()
+    assert len(window.gallery_axes) >= minimum
+    assert window.plot_scroll.verticalScrollBar().maximum() == 0
+    window.gallery_canvas.draw()
+    renderer = window.gallery_canvas.get_renderer()
+    for ax in window.gallery_axes:
+        extent = ax.get_tightbbox(renderer)
+        assert extent.x0 >= -1
+        assert extent.x1 <= window.gallery_canvas.width() + 1
+        assert extent.y0 >= -1
+        assert extent.y1 <= window.gallery_canvas.height() + 1
+    window.grab().save(f"/private/tmp/agentflow-compare-{size[0]}x{size[1]}.png")

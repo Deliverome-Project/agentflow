@@ -105,3 +105,8 @@ The CLI also supports `agentflow export-gml sample.fcs --recipe recipe.yaml
 --out gates.xml` (use `--sample-id` when the recipe contains sample exceptions).
 Gating-ML round-trip tests check event membership, including compensation; other
 applications' import support still varies.
+
+The desktop uses white surfaces with a pale neutral sidebar. Comparison thumbnails
+use a compact grid (two columns when panel width permits) and show at least two
+plots per page at supported window sizes. Selecting a thumbnail still opens its
+sample or population in the main editable plot.

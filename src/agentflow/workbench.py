@@ -615,8 +615,8 @@ class ScreenWindow(GateWindow):
         items = self.selected_records() if compare else self.state.active_recipe["gates"]
         if self.gallery_mode.currentText() == "Ancestry":
             items = self.ancestry()
-        columns = 1 if self.gallery_canvas.width() < 380 else 2
-        available_rows = max(1, self.gallery_canvas.height() // 180)
+        columns = 1 if self.gallery_canvas.width() < 330 else 2
+        available_rows = max(2, self.gallery_canvas.height() // 145)
         capacity = min(12, columns * available_rows)
         self.gallery_page.setMaximum(max(1, (len(items) + capacity - 1) // capacity))
         start = (self.gallery_page.value() - 1) * capacity
@@ -660,7 +660,7 @@ class ScreenWindow(GateWindow):
                 title = record["sample_id"] if compare else TITLES.get(gate["name"], gate["name"])
                 ax.set_title(
                     f"{title}\n{count:,} / {total:,}",
-                    fontsize=9,
+                    fontsize=8,
                     color="#922038" if gate["name"] == self.active_name else "#141414",
                 )
                 if shared_limits:
@@ -669,12 +669,12 @@ class ScreenWindow(GateWindow):
                         margin = max((hi - lo) * 0.05, 0.01)
                         setter(lo - margin, hi + margin)
                 apply_axes(ax, gate["channels"], self.state.recipe, ["recipe", "recipe"])
-                ax.tick_params(labelsize=7)
-                ax.xaxis.label.set_size(8)
-                ax.yaxis.label.set_size(8)
+                ax.tick_params(labelsize=6, pad=2)
+                ax.xaxis.label.set_size(7)
+                ax.yaxis.label.set_size(7)
             except (ValueError, OSError, KeyError) as error:
                 ax.text(0.05, 0.5, str(error), transform=ax.transAxes, wrap=True, fontsize=8)
-        self.gallery_figure.tight_layout(pad=1.6)
+        self.gallery_figure.tight_layout(pad=0.8, h_pad=1.2, w_pad=0.8)
         self.gallery_canvas.draw_idle()
 
     def draw_plates(self):
