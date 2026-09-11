@@ -100,6 +100,9 @@ class ScreenWindow(GateWindow):
         plot_actions.addStretch()
         self.polygon_button = button("Draw polygon…", lambda: self.new_population("polygon"))
         plot_actions.addWidget(self.polygon_button)
+        ratio_button = button("GFP / Cy5…", self.ratio_dialog)
+        ratio_button.setToolTip("Plot reporter signals and select a numerator / denominator ratio")
+        plot_actions.addWidget(ratio_button)
         self.main_layout.insertLayout(2, plot_actions)
         settings = W.QHBoxLayout()
         self.plot_type = W.QComboBox()
@@ -512,14 +515,14 @@ class ScreenWindow(GateWindow):
                 and other.get("channels") == gate["channels"]
                 and other["parent"] == gate["parent"]
             ):
-                for artist in draw_boundary(self.ax, other, "#5848a8", 1.6, True):
+                for artist in draw_boundary(self.ax, other, "#5848a8", 1.6, True, recipe=self.state.recipe):
                     self.picked[artist] = other["name"]
         preview = self.polygon_preview(gate)
         if preview:
             if self.selector:
                 self.selector.set_active(False)
                 self.selector.set_visible(False)
-            draw_boundary(self.ax, gate)
+            draw_boundary(self.ax, gate, recipe=self.state.recipe)
             self.help.setText(
                 "Display preview · counts and gates are unchanged. Use gating axes to edit. Asinh cofactor 150; logicle T=262144, W=.5, M=4.5, A=0."
             )
@@ -623,7 +626,7 @@ class ScreenWindow(GateWindow):
                     masks[gate["name"] if gate["kind"] == "boolean" else gate["parent"]], gate["channels"]
                 ].to_numpy()
                 draw_events(ax, data, gate["channels"], "density", record["color"])
-                draw_boundary(ax, gate)
+                draw_boundary(ax, gate, recipe=self.state.recipe)
                 count = int(masks[gate["name"]].sum())
                 total = int(masks[gate["parent"]].sum())
                 title = record["sample_id"] if compare else TITLES.get(gate["name"], gate["name"])
@@ -849,6 +852,95 @@ class ScreenWindow(GateWindow):
     def matrix_dialog(self):
         super().matrix_dialog(allow_import=not bool(self.record.get("compensation_path")))
 
+    def ratio_dialog(self):
+        dialog = W.QDialog(self)
+        dialog.setWindowTitle("Reporter scatter and ratio")
+        form = W.QFormLayout(dialog)
+        active = self.state.gate(self.active_name)
+        existing = active if active and active["kind"] == "ratio" else None
+        name = W.QLineEdit(existing["name"] if existing else "gfp_cy5_ratio")
+        name.setEnabled(existing is None)
+        name.setObjectName("ratio_name")
+        numerator, denominator, parent = W.QComboBox(), W.QComboBox(), W.QComboBox()
+        roles = self.state.recipe.get("channel_roles", {})
+        for combo, role, index in [(numerator, "gfp", 0), (denominator, "cy5", 1)]:
+            combo.addItems(list(self.state.recipe["transforms"]))
+            combo.setCurrentText(
+                existing["channels"][index] if existing else roles.get(role, {}).get("detector", "")
+            )
+        parent.addItems(
+            ["root"]
+            + [g["name"] for g in self.state.recipe["gates"] if not existing or g["name"] != existing["name"]]
+        )
+        parent.setCurrentText(
+            existing["parent"]
+            if existing
+            else "live"
+            if "live" in [g["name"] for g in self.state.recipe["gates"]]
+            else "root"
+        )
+        low, high, floor = W.QLineEdit(), W.QLineEdit(), W.QLineEdit()
+        for field, identifier in [(low, "ratio_low"), (high, "ratio_high"), (floor, "ratio_floor")]:
+            field.setObjectName(identifier)
+        low.setText(str(existing["bounds"][0]) if existing else "0.5")
+        high.setText(str(existing["bounds"][1]) if existing else "2")
+        floor.setText(str(existing["denominator_min"]) if existing else "0")
+        for title, field in [
+            ("Population name", name),
+            ("Parent", parent),
+            ("Numerator (X)", numerator),
+            ("Denominator (Y)", denominator),
+            ("Ratio minimum ≥", low),
+            ("Ratio maximum <", high),
+            ("Denominator signal must exceed", floor),
+        ]:
+            form.addRow(title, field)
+        note = label(
+            "Shared population · numerator / denominator uses compensated signal before display transforms. Set the denominator cutoff from controls to exclude background near zero. Initial bounds are examples.",
+            "muted",
+        )
+        note.setWordWrap(True)
+        form.addRow(note)
+
+        def create():
+            try:
+                self.flush_bounds()
+                if existing and any(
+                    existing["name"] in changes
+                    for changes in self.state.recipe.get("sample_overrides", {}).values()
+                ):
+                    raise ValueError(
+                        "Reset this ratio population’s sample exceptions before changing its shared definition."
+                    )
+                gate = {
+                    "name": name.text().strip(),
+                    "parent": parent.currentText(),
+                    "kind": "ratio",
+                    "channels": [numerator.currentText(), denominator.currentText()],
+                    "bounds": [float(low.text()), float(high.text())],
+                    "denominator_min": float(floor.text()),
+                    "reviewed": False,
+                }
+                candidate = copy.deepcopy(self.state.recipe)
+                if existing:
+                    candidate["gates"][
+                        next(i for i, g in enumerate(candidate["gates"]) if g["name"] == existing["name"])
+                    ] = gate
+                    self.state.invalidate(candidate, gate["name"])
+                else:
+                    candidate["gates"].append(gate)
+                self.state.apply(candidate)
+                self.rebuild(gate["name"])
+                self.plot_type.setCurrentText("Scatter")
+                self.focus_plot.setChecked(True)
+                dialog.accept()
+            except (ValueError, KeyError, TypeError) as error:
+                note.setText(str(error))
+
+        form.addRow(button("Show scatter and apply ratio", create, True))
+        form.addRow(button("Cancel", dialog.reject))
+        dialog.exec()
+
     def new_population(self, preferred_kind=None):
         active = self.state.gate(self.active_name)
         if active is None:
@@ -946,7 +1038,7 @@ class ScreenWindow(GateWindow):
                 elif gate["kind"] == "rectangle":
                     gate["bounds"] = [lo[0], hi[0], lo[1], hi[1]]
                 else:
-                    gate["bounds"] = [lo[0], None]
+                    gate["bounds"] = [lo[0], hi[0]]
                 candidate = copy.deepcopy(self.state.recipe)
                 candidate["gates"].append(gate)
                 self.state.apply(candidate)

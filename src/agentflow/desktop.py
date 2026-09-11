@@ -198,7 +198,7 @@ class GateWindow(W.QMainWindow):
         stats.addWidget(self.count)
         stats.addWidget(self.percent)
         stats.addStretch()
-        self.review_button = button("Review & next →", self.review_next)
+        self.review_button = button("Mark reviewed →", self.review_next)
         stats.addWidget(self.review_button)
         main.addLayout(stats)
         self.note = label("", "muted")
@@ -358,6 +358,11 @@ class GateWindow(W.QMainWindow):
             help_text = (
                 "Drag a corner or edge to resize. Drag inside to move; drag outside to draw a new gate."
             )
+        elif kind == "ratio":
+            from .plot_views import draw_boundary
+
+            draw_boundary(self.ax, gate, recipe=self.state.recipe)
+            help_text = "Ratio uses signal before display transforms. Use GFP / Cy5… to edit ratio bounds and denominator cutoff. Saving does not mark gates reviewed."
         elif kind == "boolean":
             help_text = (
                 "Combined population: "

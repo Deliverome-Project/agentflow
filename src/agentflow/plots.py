@@ -33,10 +33,10 @@ def draw_population(ax, prepared, gate, parent_mask, view=None):
     )
 
 
-def draw_gate(ax, gate):
+def draw_gate(ax, gate, recipe=None):
     from .plot_views import draw_boundary
 
-    draw_boundary(ax, gate)
+    draw_boundary(ax, gate, recipe=recipe)
     ax.autoscale_view()
 
 
@@ -52,7 +52,7 @@ def save_qc(prepared, recipe, masks, path, sample_id):
         view = recipe.get("display", {})
         population = gate["name"] if gate["kind"] == "boolean" else gate["parent"]
         draw_population(ax, prepared, gate, masks[population], view)
-        draw_gate(ax, gate)
+        draw_gate(ax, gate, recipe)
         ax.set_title(
             f"{gate.get('label', gate['name'])}\n{masks[gate['name']].sum():,} / {masks[gate['parent']].sum():,} — {'reviewed' if gate.get('reviewed') else 'DRAFT'}"
         )

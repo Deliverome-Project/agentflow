@@ -180,6 +180,10 @@ def main(argv=None):
             if recipe.get("sample_overrides") and not (args.sample_id or args.shared_template):
                 raise ValueError("Recipe has sample exceptions; choose --sample-id or --shared-template")
             recipe = effective_recipe(recipe, args.sample_id)
+            if any(g["kind"] == "ratio" for g in recipe["gates"]):
+                raise ValueError(
+                    "Signal ratio gates require the Agentflow recipe; Gating-ML export is not supported for these gates."
+                )
             prepared = prepare(args.sample, recipe)
             with Path(args.out).open("xb") as handle:
                 flowkit().export_gatingml(build_strategy(recipe, prepared.matrix), handle)

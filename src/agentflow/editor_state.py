@@ -3,6 +3,7 @@
 import copy
 from pathlib import Path
 
+from .acquisition import instrument_provenance
 from .engine import digest, evaluate, prepare, save_recipe, validate
 from .overrides import effective_recipe
 from .provenance import save_snapshot
@@ -133,5 +134,11 @@ class EditorState:
         self.initial = copy.deepcopy(self.recipe)
         self.original_hash = digest(self.path)
         save_snapshot(
-            self.path.with_suffix(".reproducibility.yaml"), self.recipe, recipe_sha256=self.original_hash
+            self.path.with_suffix(".reproducibility.yaml"),
+            self.recipe,
+            recipe_sha256=self.original_hash,
+            inspected_sample={
+                "sample_id": str(self.prepared.sample.id),
+                "instrument": instrument_provenance(self.prepared.sample),
+            },
         )

@@ -81,10 +81,12 @@ def add_reporter(recipe, sample_path, role, channel, confirmed=False):
         "parent": parent,
         "kind": "range",
         "channels": [channel],
-        "bounds": [None, threshold] if role == "live" else [threshold, None],
+        "bounds": [float(data.min()) - 0.001, threshold]
+        if role == "live"
+        else [threshold, float(data.max()) + 0.001],
         "reviewed": False,
         "label": TITLES[role] + ("" if confirmed else " candidate"),
-        "note": "Draft 80th-percentile threshold; use biological controls to set the final boundary.",
+        "note": "Draft bounded population with an 80th-percentile boundary; use biological controls to review both bounds.",
     }
     if role == "live":
         position = next(

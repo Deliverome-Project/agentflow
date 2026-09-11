@@ -99,6 +99,10 @@ def test_batch_replay_and_metadata(tmp_path, recipe):
     second = run_batch(samples, path, tmp_path / "two")
     pd.testing.assert_frame_equal(first, second)
     assert first["metadata:well"].eq("A01").all()
+    import yaml
+
+    snapshot = yaml.safe_load((tmp_path / "one/reproducibility.yaml").read_text())
+    assert "detectors" in snapshot["run"]["inputs"][0]["instrument"]
     assert (tmp_path / "one/gates-0001.png").exists()
     assert json.loads((tmp_path / "one/run.json").read_text()) == json.loads(
         (tmp_path / "two/run.json").read_text()

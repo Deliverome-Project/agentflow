@@ -92,12 +92,18 @@ def build_strategy(recipe, matrix=None):
                     compensation_ref="compensation"
                     if matrix is not None and channel in matrix.detectors
                     else "uncompensated",
-                    transformation_ref=channel if channel in strategy.transformations else None,
+                    transformation_ref=channel
+                    if channel in strategy.transformations and gate["kind"] != "ratio"
+                    else None,
                     range_min=bounds[0],
                     range_max=bounds[1],
                 )
             )
-        if gate["kind"] == "boolean":
+        if gate["kind"] == "ratio":
+            from .ratio import SignalRatioGate
+
+            operation = SignalRatioGate(gate["name"], dims, gate["bounds"], gate["denominator_min"])
+        elif gate["kind"] == "boolean":
             operation = fk.gates.BooleanGate(
                 gate["name"],
                 gate["operation"],

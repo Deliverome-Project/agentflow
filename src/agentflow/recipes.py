@@ -63,8 +63,14 @@ def validate(recipe):
                 raise ValueError("Polygon requires at least three 2D vertices")
             if not np.isfinite(points).all() or np.linalg.matrix_rank(points - points[0]) < 2:
                 raise ValueError("Polygon must be finite and enclose an area")
-        elif gate["kind"] == "range":
+        elif gate["kind"] in ("range", "ratio"):
             bounds = gate["bounds"]
+            if gate["kind"] == "ratio":
+                floor = gate.get("denominator_min")
+                if floor is None or not np.isfinite(floor) or floor < 0:
+                    raise ValueError("Ratio requires a finite nonnegative denominator minimum")
+                if len(bounds) != 2 or any(v is None for v in bounds):
+                    raise ValueError("Ratio requires two finite bounds")
             if len(bounds) != 2 or all(v is None for v in bounds):
                 raise ValueError("Range requires a lower and/or upper bound")
             if any(v is not None and not np.isfinite(v) for v in bounds):

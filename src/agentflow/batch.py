@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .acquisition import instrument_provenance
 from .engine import digest, evaluate, load_recipe, prepare, save_recipe, summarize, validate
 from .plots import save_qc, save_time_qc
 from .provenance import save_snapshot, software_identity
@@ -73,6 +74,7 @@ def run_batch(samples, recipe_path, output):
                     if matrix is None
                     else {"detectors": matrix.detectors, "values": matrix.matrix.tolist()},
                     "metadata": record,
+                    "instrument": instrument_provenance(prepared.sample),
                     "gate_overrides": recipe.get("sample_overrides", {}).get(record["sample_id"], {}),
                     "quality": sample_quality(prepared),
                 }

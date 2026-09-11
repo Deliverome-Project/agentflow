@@ -48,3 +48,22 @@ def check_acquisition(reference, current):
         for setting, value in expected.items():
             if value is not None and value != actual[setting]:
                 raise ValueError(f"{detector}: compensation acquisition {setting} differs or is missing")
+
+
+def instrument_provenance(sample):
+    """Reported FCS acquisition fields; missing information is explicitly unknown."""
+    metadata = {k.lower(): v for k, v in sample.get_metadata().items()}
+    settings = acquisition_settings(sample, sample.pnn_labels)
+    return {
+        "source": "FCS metadata (instrument-reported; not independently verified)",
+        "instrument": settings["instrument"],
+        "serial_number": metadata.get("cytsn"),
+        "acquisition_date": metadata.get("date"),
+        "start_time": metadata.get("btim"),
+        "end_time": metadata.get("etim"),
+        "acquisition_software": metadata.get("sys"),
+        "recorded_filename": metadata.get("fil"),
+        "event_count": sample.event_count,
+        "detectors": settings["detectors"],
+        "fcs_keywords": metadata,
+    }

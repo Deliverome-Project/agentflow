@@ -520,3 +520,30 @@ def test_compensation_cleanup_selection_and_small_screen(window, demo, tmp_path,
     wizard.grab().save("/private/tmp/agentflow-compensation-setup.png")
     wizard.reject()
     window.records[0].pop("compensation_path")
+
+
+def test_ratio_dialog_scatter_and_snapshot(window, tmp_path):
+    import yaml
+
+    def accept_ratio():
+        dialog = W.QApplication.activeModalWidget()
+        for button in dialog.findChildren(W.QPushButton):
+            if button.text() == "Show scatter and apply ratio":
+                button.click()
+                return
+        dialog.reject()
+
+    QtCore.QTimer.singleShot(20, accept_ratio)
+    window.ratio_dialog()
+    gate = window.state.gate("gfp_cy5_ratio")
+    assert gate is not None
+    assert gate["channels"] == ["BL1-A", "RL1-A"]
+    assert window.plot_type.currentText() == "Scatter"
+    assert window.selector is None
+    assert len(window.ax.lines) >= 3
+    window.state.save()
+    snapshot = yaml.safe_load(window.state.path.with_suffix(".reproducibility.yaml").read_text())
+    assert snapshot["inspected_sample"]["instrument"]["detectors"]["BL1-A"]["gain"] == 1
+    assert "fcs_keywords" in snapshot["inspected_sample"]["instrument"]
+    W.QApplication.processEvents()
+    window.grab().save("/private/tmp/agentflow-ratio-scatter.png")

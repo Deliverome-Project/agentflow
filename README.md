@@ -229,3 +229,6 @@ release does not claim a complete FlowJo replacement.
 The [workspace feature design](docs/design/flowjo-workflows.md) translates the
 FlowJo basic tutorial into proposed simpler workflows and shared GUI, CLI, Python
 and YAML interfaces. It distinguishes current functionality from planned work.
+
+See [saved analyses and metadata](docs/saved-analysis.md) for recipe versus snapshot
+files, review status, instrument provenance, histogram defaults and reporter ratios.
