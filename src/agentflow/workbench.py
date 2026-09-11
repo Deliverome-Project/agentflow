@@ -835,7 +835,8 @@ class ScreenWindow(GateWindow):
     def compensation_wizard(self):
         from .compensation_wizard import CompensationWizard
 
-        detectors = [c for c, t in self.state.recipe["transforms"].items() if t["kind"] != "linear"]
+        sample = self.state.prepared.sample
+        detectors = [sample.pnn_labels[i] for i in sample.fluoro_indices]
         wizard = CompensationWizard(self, detectors)
         if wizard.exec() == W.QDialog.Accepted and wizard.spec is not None:
             try:

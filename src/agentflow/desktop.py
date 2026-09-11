@@ -102,6 +102,8 @@ class GateWindow(W.QMainWindow):
         self.compensation_label.setWordWrap(True)
         sidebar.addWidget(self.compensation_label)
         sidebar.addWidget(button("View / change matrix…", self.matrix_dialog))
+        if hasattr(self, "compensation_wizard"):
+            sidebar.addWidget(button("Set up compensation…", self.compensation_wizard))
         body.addWidget(side)
         main = W.QVBoxLayout()
         main.setSpacing(10)

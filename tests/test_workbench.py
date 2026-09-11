@@ -470,3 +470,53 @@ def test_failed_analysis_restores_editor(window, tmp_path, monkeypatch):
     assert window.centralWidget().isEnabled()
     assert "already exists" in window.analysis_error
     assert list(output.iterdir()) == []
+
+
+def test_compensation_cleanup_selection_and_small_screen(window, demo, tmp_path, monkeypatch):
+    from agentflow.compensation_wizard import CompensationWizard
+    from agentflow.control_review import resolve_config
+
+    window.records[0]["compensation_path"] = "assigned.json"
+    wizard = CompensationWizard(window, ["BL1-A"])
+    assert "2 of 3" in wizard.assignment_summary.text()
+    assert "keeps assigned matrix" in wizard.assignments.itemText(0)
+    wizard.set_config(resolve_config(json.loads((demo / "controls.json").read_text()), demo))
+    cleanup = {
+        "version": 1,
+        "compensation": {"mode": "none"},
+        "transforms": {"FSC-A": {"kind": "linear"}},
+        "gates": [
+            {"name": "cells", "kind": "range", "parent": "root", "channels": ["FSC-A"], "bounds": [0, None]},
+            {
+                "name": "singlets",
+                "kind": "range",
+                "parent": "cells",
+                "channels": ["FSC-A"],
+                "bounds": [1, None],
+            },
+        ],
+    }
+    path = tmp_path / "cleanup.json"
+    path.write_text(json.dumps(cleanup))
+    monkeypatch.setattr(W.QFileDialog, "getOpenFileName", lambda *a: (str(path), ""))
+    wizard.spec = {"draft": True}
+    wizard.choose_cleanup()
+    assert wizard.spec is None
+    assert wizard.configuration()["cleanup_gate"] == "singlets"
+    wizard.cleanup_gate.setCurrentText("cells")
+    assert wizard.configuration()["cleanup_gate"] == "cells"
+    wizard.clear_cleanup()
+    assert "cleanup_recipe" not in wizard.configuration()
+    wizard.add_row("NEW-A")
+    wizard.table.selectRow(wizard.table.rowCount() - 1)
+    assert wizard.ax is None  # Never edit a previous control's stale histogram.
+    assert "Choose" in wizard.status.text()
+    wizard.resize(980, 620)
+    wizard.show()
+    W.QApplication.processEvents()
+    point = wizard.apply_button.mapTo(wizard, QtCore.QPoint(0, 0))
+    assert point.y() + wizard.apply_button.height() <= wizard.height()
+    assert point.x() + wizard.apply_button.width() <= wizard.width()
+    wizard.grab().save("/private/tmp/agentflow-compensation-setup.png")
+    wizard.reject()
+    window.records[0].pop("compensation_path")
