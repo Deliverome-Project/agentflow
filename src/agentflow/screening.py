@@ -32,7 +32,10 @@ def _screen_report(run, output, gate, metric="percent_parent", min_events=100, h
     )
     roles = table.get("metadata:control_role", pd.Series("sample", index=table.index))
     table["control_role"] = roles
-    qc_counts = table["count"] if metric.startswith("median_signal:") else table["parent_count"]
+    qc_counts = table["parent_count"]
+    if "_signal:" in metric:
+        channel = metric.split(":", 1)[1]
+        qc_counts = table.get("finite_signal_count:" + channel, table["count"])
     table["qc_population_events"] = qc_counts
     table["qc_pass"] = (qc_counts >= min_events) & np.isfinite(table["value"])
     table["qc_reason"] = np.where(

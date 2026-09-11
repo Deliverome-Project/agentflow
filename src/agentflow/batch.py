@@ -14,6 +14,7 @@ import pandas as pd
 from . import flowkit
 from .acquisition import instrument_provenance
 from .engine import build_strategy, digest, evaluate, load_recipe, prepare, save_recipe, summarize, validate
+from .event_export import EventWriter
 from .plots import save_qc, save_time_qc
 from .provenance import save_snapshot, software_identity
 from .quality import sample_quality
@@ -47,18 +48,23 @@ def run_batch(samples, recipe_path, output):
     out.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".agentflow-", dir=out.parent))
     rows, provenance = [], []
+    event_writer = None
     try:
+        event_writer = EventWriter(staging / "events.parquet", records, recipe)
         for index, record in enumerate(records):
             path = Path(record["fcs_path"])
             if not path.is_absolute():
                 path = Path(samples).resolve().parent / path
             before = digest(path)
+            if record.get("input_sha256") and record["input_sha256"] != before:
+                raise ValueError(f"{path}: content differs from sample-sheet fingerprint")
             effective = sample_recipe(recipe, record)
             effective.setdefault("display", {})["color"] = record["color"]
             prepared = prepare(path, effective)
             masks = evaluate(prepared, effective)
             if digest(path) != before:
                 raise ValueError(f"{path}: input changed during analysis")
+            event_writer.write(prepared, masks, record, before)
             stats = summarize(prepared, effective, masks)
             stats.insert(0, "sample_id", record["sample_id"])
             for key, value in record.items():
@@ -85,6 +91,8 @@ def run_batch(samples, recipe_path, output):
                 flowkit.export_gatingml(build_strategy(effective, prepared.matrix), handle)
             save_qc(prepared, effective, masks, staging / f"gates-{index + 1:04d}.png", record["sample_id"])
             save_time_qc(prepared, staging / f"time-{index + 1:04d}.png")
+        event_writer.close()
+        event_writer = None
         if Path(recipe_path).read_bytes() != recipe_bytes or Path(samples).read_bytes() != manifest_bytes:
             raise ValueError("Recipe or sample sheet changed during analysis")
         if any(digest(p) != checksum for p, checksum in compensation_inputs.items()):
@@ -155,6 +163,8 @@ def run_batch(samples, recipe_path, output):
             raise ValueError("Output appeared during analysis; choose a new run directory")
         staging.rename(out)
     finally:
+        if event_writer is not None:
+            event_writer.close()
         if staging.exists():
             shutil.rmtree(staging)
     print(json.dumps({"status": "complete", "samples": len(manifest), "output": str(out)}))

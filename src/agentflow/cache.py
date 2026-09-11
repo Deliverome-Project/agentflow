@@ -40,6 +40,7 @@ def cache_key(samples, recipe):
             "flowutils",
             "numpy",
             "pandas",
+            "pyarrow",
             "matplotlib",
             "scipy",
         ]

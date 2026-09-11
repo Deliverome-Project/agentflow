@@ -127,3 +127,75 @@ positive signals with probabilities 5%, 25%, and 60% across the three samples.
 The same positive signal increment is used in all three. These are predefined
 sample-sheet groups, not inferred classifications, and the demo negative control
 is not an unstained control.
+
+### Build a sample sheet after acquisition, including agent / Notion notes
+
+```sh
+agentflow sample-sheet path/to/fcs-folder --out draft-sheet
+agentflow sample-sheet path/to/fcs-folder --annotations notes.yaml --out annotated-sheet
+```
+
+Both commands create `samples.csv`, `acquisition.json`, and a copy of the annotation
+input. Files are scanned recursively, with stable relative-path sample IDs.
+Unspecified group, condition, plate, well and replicate fields remain blank.
+The sheet records input SHA-256 values; batch execution rejects changed inputs.
+Review the draft identities and assignments before analysis. Control files are
+included if present in the folder; explicitly assign their role or remove them
+from the analysis sheet as appropriate.
+
+An agent can read a scientist-selected Notion experiment page through its Notion
+connector, then create this annotation input. Agentflow itself does not fetch
+Notion pages or store Notion credentials. This separation lets the same importer
+accept scientist-authored notes and other ELNs. Annotations match **exact relative
+FCS filenames**, never fuzzy matches. Duplicate or unmatched annotations fail.
+Agents should leave `reviewed: false` until the scientist confirms assignments.
+Ask about missing or contradictory identities instead of guessing. For example:
+
+```yaml
+samples:
+  - file: plate-1/well-A01.fcs
+    source_url: https://www.notion.so/your-experiment-page
+    reviewed: false
+    metadata:
+      sample_id: treated-replicate-1
+      group: treated
+      plate: plate-1
+      well: A01
+      biological_replicate: 1
+      instrument_user_reported: Attune
+```
+
+Custom scalar metadata columns are preserved. FCS acquisition fields have a
+`fcs:` prefix and cannot be overridden by annotations. User-reported instrument
+information stays separate from FCS-reported values. Notion links identify the
+annotation source; the copied annotation file preserves what was actually used.
+There is no automatic synchronization with later Notion edits.
+
+### Event-level data and summary statistics
+
+Every batch run now writes one `events.parquet`, separate from `summary.csv`:
+
+- One row per acquired event, including events outside every gate; no plot downsampling.
+- `sample_id` + zero-based `event_index` identify the original event, with `input_sha256`.
+- `raw:<detector>` contains FlowKit-preprocessed uncompensated values (which may
+  account for acquisition gain/log encoding/time scaling), **not original encoded
+  FCS numbers**. Retain the original FCS for the primary acquisition record.
+- `signal:<detector>` contains compensated values when compensation is assigned,
+  otherwise uncompensated values, always before display transformations.
+- `gate:<population>` is a Boolean membership column, including `gate:root`.
+- `metadata:<field>` repeats sample-sheet metadata on each event. `instrument_json`
+  contains acquisition settings and all FCS keywords; `compensation_json` records
+  the resolved matrix. Parquet schema metadata includes the recipe and Agentflow identity.
+- Detector columns span the union of acquired detectors; absent detectors are null.
+
+The writer streams batches into a compressed Parquet file rather than collecting
+all samples' events in memory. Input preparation still loads one FCS sample.
+
+For every gate and recipe detector, summary CSV now includes arithmetic mean,
+median, sample standard deviation (`ddof=1`), minimum, maximum, 5th/25th/75th/95th
+percentiles, and finite-value count. Statistics use pre-display signal values;
+nonfinite values are excluded and the finite count exposes that exclusion.
+Empty populations have missing statistics; standard deviation is missing for
+fewer than two finite events. Gate event counts are unaffected. Geometric means
+and CV are deliberately not emitted because compensated signals can be zero or
+negative. These are descriptive cell-level statistics, not replicate-level errors.

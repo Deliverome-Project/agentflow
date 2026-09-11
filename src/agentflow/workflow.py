@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from ._vendor import flowkit as fk
+from .acquisition import instrument_provenance
 from .compensation import load_matrix
 from .engine import evaluate, prepare
 from .recipes import save_recipe, validate
@@ -35,6 +36,7 @@ def inspect_sample(path):
         "events": sample.event_count,
         "channels": [{"detector": n, "marker": m} for n, m in zip(sample.pnn_labels, sample.pns_labels)],
         "instrument": metadata.get("cyt"),
+        "acquisition": instrument_provenance(sample),
         "spillover": matrix_info,
     }
 
