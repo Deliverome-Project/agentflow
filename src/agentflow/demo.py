@@ -92,7 +92,11 @@ def make_demo(output):
     for gate in recipe["gates"]:
         if gate["name"] in ("live", "gfp", "mscarlet", "cy5"):
             threshold = float(np.arcsinh(5000 / 150))
-            gate["bounds"] = [None, threshold] if gate["name"] == "live" else [threshold, None]
+            gate["bounds"] = (
+                [float(np.arcsinh(-1000 / 150)), threshold]
+                if gate["name"] == "live"
+                else [threshold, float(np.arcsinh(100000 / 150))]
+            )
             gate["note"] = (
                 "DUMMY synthetic dye / detector assignment and threshold; for interaction practice only."
             )

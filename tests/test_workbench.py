@@ -93,6 +93,8 @@ def test_histogram_drag_keeps_threshold_and_zoom(window):
     from agentflow.engine import load_recipe
     from agentflow.threshold import ThresholdSelector
 
+    window.range_mode.setCurrentIndex(1)  # Explicitly test the optional one-sided mode.
+    window.apply_bounds()
     window.canvas.draw()
     xlim, ylim = window.ax.get_xlim(), window.ax.get_ylim()
     for fraction in (0.35, 0.65, 0.45):
@@ -639,3 +641,36 @@ def test_counts_and_gallery_fit_without_scrolling(window, size):
         assert extent.y0 >= -1
         assert extent.y1 <= window.gallery_canvas.height() + 1
     window.grab().save(f"/private/tmp/agentflow-layout-{size[0]}x{size[1]}.png")
+
+
+def test_dummy_histograms_open_between_and_scatter_exploration_is_read_only(window):
+    from agentflow.scatter_viewer import ScatterDialog
+
+    assert window.range_mode.currentText() == "Between bounds"
+    for gate in window.state.recipe["gates"]:
+        if gate["kind"] == "range":
+            assert all(value is not None for value in gate["bounds"])
+    before = copy.deepcopy(window.state.recipe)
+    dialog = ScatterDialog(window)
+    dialog.population.setCurrentText("live")
+    dialog.x.setCurrentText("BL1-A")
+    dialog.y.setCurrentText("RL1-A")
+    dialog.style.setCurrentText("Density")
+    assert dialog.ax.get_xlabel() == "BL1-A · asinh"
+    assert dialog.ax.get_ylabel() == "RL1-A · asinh"
+    assert f"{window.state.counts()['live']:,}" in dialog.count.text()
+    assert window.state.recipe == before
+
+    def fill():
+        active = W.QApplication.activeModalWidget()
+        assert active.findChild(W.QComboBox, "parent_population").currentText() == "live"
+        assert active.findChild(W.QComboBox, "x_detector").currentText() == "BL1-A"
+        assert active.findChild(W.QComboBox, "y_detector").currentText() == "RL1-A"
+        active.findChild(W.QLineEdit, "population_name").setText("reporter_subset")
+        next(b for b in active.findChildren(W.QPushButton) if b.text() == "Add draft population").click()
+
+    QtCore.QTimer.singleShot(0, fill)
+    dialog.create_population()
+    assert window.state.gate("reporter_subset")["parent"] == "live"
+    assert window.state.gate("reporter_subset")["channels"] == ["BL1-A", "RL1-A"]
+    dialog.close()

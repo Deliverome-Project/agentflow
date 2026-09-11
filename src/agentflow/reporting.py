@@ -28,6 +28,7 @@ def write_report(folder, recipe, table, inputs):
                 )
         sections.append(
             f"<section><h2>{escape(item['sample_id'])}</h2><p>{escape(' '.join(messages))}</p>"
+            f"<p><a href='gates-{i:04d}.gatingml.xml'>Download this sample’s Gating-ML gates</a></p>"
             f"<img src='gates-{i:04d}.png' alt='Gate review for {escape(item['sample_id'], quote=True)}'>"
             + (
                 f"<img src='time-{i:04d}.png' alt='Acquisition time QC'>"

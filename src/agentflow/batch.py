@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from . import flowkit
 from .acquisition import instrument_provenance
-from .engine import digest, evaluate, load_recipe, prepare, save_recipe, summarize, validate
+from .engine import build_strategy, digest, evaluate, load_recipe, prepare, save_recipe, summarize, validate
 from .plots import save_qc, save_time_qc
 from .provenance import save_snapshot, software_identity
 from .quality import sample_quality
@@ -68,6 +69,7 @@ def run_batch(samples, recipe_path, output):
             provenance.append(
                 {
                     "sample_id": record["sample_id"],
+                    "gatingml": f"gates-{index + 1:04d}.gatingml.xml",
                     "sha256": before,
                     "signal_space": "raw" if matrix is None else "compensated",
                     "compensation": None
@@ -79,6 +81,8 @@ def run_batch(samples, recipe_path, output):
                     "quality": sample_quality(prepared),
                 }
             )
+            with (staging / f"gates-{index + 1:04d}.gatingml.xml").open("wb") as handle:
+                flowkit.export_gatingml(build_strategy(effective, prepared.matrix), handle)
             save_qc(prepared, effective, masks, staging / f"gates-{index + 1:04d}.png", record["sample_id"])
             save_time_qc(prepared, staging / f"time-{index + 1:04d}.png")
         if Path(recipe_path).read_bytes() != recipe_bytes or Path(samples).read_bytes() != manifest_bytes:

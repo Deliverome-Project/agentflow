@@ -71,3 +71,37 @@ Event counts and review actions stay outside the scrolling plot settings. The
 comparison gallery fits a page of plots to its available height and width; use
 the left/right arrows for more plots. Resizing the window or divider updates
 the page capacity. The default gating view fits at 980×620 and larger.
+
+### Explore detectors and create subpopulations
+
+Select a population in the tree, then use **New subpopulation…** to create a
+child, sibling, or a population under another parent. Choose the gate shape and
+acquired detector names; reshape the draft on the main plot. Histogram gates
+start **Between bounds**. Above/below remain explicit options. Existing saved
+one-sided gates retain their intended meaning; the synthetic demo now uses two
+finite bounds too.
+
+**Scatterplot…** opens an inspection window: choose a population, X/Y detectors,
+and scatter, density, or contour. This temporary view does not change the recipe.
+**Create subpopulation on these axes…** carries that population and detector pair
+into the gate dialog. The resulting gate is saved with the recipe through the
+normal Save action. Detector axis transformations come from the recipe.
+
+### Standards and gate interchange
+
+MIFlowCyt (Minimum Information about a Flow Cytometry Experiment) describes
+reporting requirements for the experiment, samples, instrument, and analysis;
+it is not a gating library or file format. Agentflow captures acquisition
+metadata and analysis provenance, but does not certify MIFlowCyt completeness.
+See [ISAC data standards](https://isac-net.org/data-standards/).
+
+Each batch run now exports `gates-0001.gatingml.xml`, etc. using FlowKit's native
+Gating-ML 2.0 exporter. The corresponding sample ID is recorded in run provenance,
+and the report links each file. Each export includes that sample's effective gate
+hierarchy, transforms and resolved compensation, including sample exceptions and
+ratio gates. Use these XML files for gate interchange; keep the YAML recipe and
+sample sheet for Agentflow's review flags, groups, display settings and reruns.
+The CLI also supports `agentflow export-gml sample.fcs --recipe recipe.yaml
+--out gates.xml` (use `--sample-id` when the recipe contains sample exceptions).
+Gating-ML round-trip tests check event membership, including compensation; other
+applications' import support still varies.

@@ -68,7 +68,7 @@ class ScreenWindow(GateWindow):
         self.overlay = W.QCheckBox("Overlay samples")
         self.overlay.toggled.connect(self.redraw)
         top.addWidget(self.overlay)
-        top.addWidget(button("New population…", self.new_population))
+        top.addWidget(button("New subpopulation…", self.new_population))
         experiment_bar = W.QWidget(objectName="experiment_bar")
         experiment_bar.setLayout(top)
         top.setContentsMargins(10, 8, 10, 8)
@@ -97,12 +97,13 @@ class ScreenWindow(GateWindow):
         display_layout.setContentsMargins(0, 0, 0, 0)
         display_panel.hide()
         self.display_panel = display_panel
-        display_toggle = W.QCheckBox("Plot appearance && axes")
+        display_toggle = W.QCheckBox("Plot settings")
         display_toggle.toggled.connect(display_panel.setVisible)
         plot_actions = W.QHBoxLayout()
         plot_actions.addWidget(display_toggle)
         plot_actions.addStretch()
-        self.polygon_button = button("Draw polygon…", lambda: self.new_population("polygon"))
+        self.polygon_button = button("Polygon…", lambda: self.new_population("polygon"))
+        plot_actions.addWidget(button("Scatterplot…", self.scatter_dialog))
         plot_actions.addWidget(self.polygon_button)
         ratio_button = button("GFP / Cy5…", self.ratio_dialog)
         ratio_button.setToolTip("Plot reporter signals and select a numerator / denominator ratio")
@@ -967,7 +968,13 @@ class ScreenWindow(GateWindow):
         form.addRow(button("Cancel", dialog.reject))
         dialog.exec()
 
-    def new_population(self, preferred_kind=None):
+    def scatter_dialog(self):
+        from .scatter_viewer import ScatterDialog
+
+        self.flush_bounds()
+        ScatterDialog(self).exec()
+
+    def new_population(self, preferred_kind=None, preferred_channels=None, parent_name=None):
         active = self.state.gate(self.active_name)
         if active is None:
             return
@@ -989,6 +996,9 @@ class ScreenWindow(GateWindow):
         y.setCurrentText(active["channels"][-1])
         if x.currentText() == y.currentText() and y.count() > 1:
             y.setCurrentIndex((x.currentIndex() + 1) % y.count())
+        if preferred_channels:
+            x.setCurrentText(preferred_channels[0])
+            y.setCurrentText(preferred_channels[1])
         parent.addItems(["root"] + [g["name"] for g in self.state.recipe["gates"]])
         relationship = W.QComboBox()
         relationship.setObjectName("population_relationship")
@@ -1004,6 +1014,9 @@ class ScreenWindow(GateWindow):
                 parent.setCurrentText(active["name"] if index == 0 else active["parent"])
 
         relationship.currentIndexChanged.connect(choose_relationship)
+        if parent_name is not None:
+            relationship.setCurrentIndex(2)
+            parent.setCurrentText(parent_name)
         form.addRow("Create as", relationship)
         kind.addItems(["rectangle", "polygon", "range", "boolean"])
         for title, field in [
