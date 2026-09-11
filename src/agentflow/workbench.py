@@ -12,7 +12,7 @@ from PySide6 import QtWidgets as W
 
 from .desktop import TITLES, GateWindow, button, label
 from .engine import make_transform
-from .plot_views import apply_axes, draw_boundary, draw_events
+from .plot_views import apply_axes, display_spec, draw_boundary, draw_events
 from .samples import SampleSession, sample_recipe
 
 
@@ -27,18 +27,26 @@ class ScreenWindow(GateWindow):
         prepared, _ = self.session.get(self.record, recipe)
         super().__init__(prepared, recipe, name, path)
         self.setWindowTitle("Agentflow · Multi-sample screen review")
-        self.resize(1540, 960)
-        self.setMinimumSize(1180, 800)
+        self.setMinimumSize(980, 620)
+        available = self.screen().availableGeometry()
+        self.resize(min(1440, max(980, available.width() - 40)), min(900, max(620, available.height() - 60)))
         top = W.QHBoxLayout()
         analysis_menu = W.QMenu(self)
         analysis_menu.addAction("Open analysis…", self.open_analysis)
         analysis_menu.addAction("Save and keep editing", lambda: self.save_changes(close=False))
         analysis_menu.addAction("Save and run all samples…", self.run_analysis)
+        analysis_menu.addSeparator()
+        analysis_menu.addAction("Detectors…", self.detectors_dialog)
+        analysis_menu.addAction("Calculate compensation…", self.compensation_wizard)
+        analysis_menu.addAction("Pinned controls…", self.pin_dialog)
+        analysis_menu.addAction("Reset selected sample exception", self.reset_exception)
         analysis_button = W.QPushButton("Analysis")
         analysis_button.setMenu(analysis_menu)
         top.addWidget(analysis_button)
         top.addWidget(label("SAMPLE"))
         self.sample_choice = W.QComboBox()
+        self.sample_choice.setSizeAdjustPolicy(W.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.sample_choice.setMinimumContentsLength(12)
         for r in records:
             self.sample_choice.addItem(f"{r['sample_id']} · {r['group']}")
         self.sample_choice.currentIndexChanged.connect(self.switch_sample)
@@ -51,6 +59,8 @@ class ScreenWindow(GateWindow):
         top.addWidget(self.next_sample)
         top.addWidget(label("COMPARE"))
         self.group_choice = W.QComboBox()
+        self.group_choice.setSizeAdjustPolicy(W.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.group_choice.setMinimumContentsLength(10)
         self.group_choice.addItem("All groups")
         self.group_choice.addItems(sorted({r["group"] for r in records}))
         self.group_choice.currentIndexChanged.connect(self.redraw)
@@ -58,7 +68,6 @@ class ScreenWindow(GateWindow):
         self.overlay = W.QCheckBox("Overlay samples")
         self.overlay.toggled.connect(self.redraw)
         top.addWidget(self.overlay)
-        top.addWidget(button("Detectors…", self.detectors_dialog))
         top.addWidget(button("New population…", self.new_population))
         self.root_layout.insertLayout(1, top)
         self.scope = label(
@@ -72,15 +81,12 @@ class ScreenWindow(GateWindow):
         self.edit_scope.addItems(["All samples", "This sample only"])
         self.edit_scope.currentIndexChanged.connect(self.change_scope)
         scopes.addWidget(self.edit_scope)
-        scopes.addWidget(button("Reset selected exception", self.reset_exception))
         scopes.addWidget(button("Next draft →", self.next_draft))
         self.focus_plot = W.QCheckBox("Focus plot")
         self.focus_plot.setToolTip("Hide comparison thumbnails to enlarge the editable plot")
         self.focus_plot.toggled.connect(self.toggle_focus)
         scopes.addWidget(self.focus_plot)
         scopes.addStretch()
-        scopes.addWidget(button("Pinned controls…", self.pin_dialog))
-        scopes.addWidget(button("Calculate compensation…", self.compensation_wizard))
         self.root_layout.insertLayout(3, scopes)
         display_panel = W.QWidget()
         display_layout = W.QVBoxLayout(display_panel)
@@ -89,7 +95,12 @@ class ScreenWindow(GateWindow):
         self.display_panel = display_panel
         display_toggle = W.QCheckBox("Plot appearance && axes")
         display_toggle.toggled.connect(display_panel.setVisible)
-        self.main_layout.insertWidget(2, display_toggle)
+        plot_actions = W.QHBoxLayout()
+        plot_actions.addWidget(display_toggle)
+        plot_actions.addStretch()
+        self.polygon_button = button("Draw polygon…", lambda: self.new_population("polygon"))
+        plot_actions.addWidget(self.polygon_button)
+        self.main_layout.insertLayout(2, plot_actions)
         settings = W.QHBoxLayout()
         self.plot_type = W.QComboBox()
         self.plot_type.addItems(["Scatter", "Density", "Contour"])
@@ -138,7 +149,7 @@ class ScreenWindow(GateWindow):
         self.main_layout.insertWidget(3, display_panel)
         gallery_panel = W.QWidget()
         self.gallery_panel = gallery_panel
-        gallery_panel.setMinimumWidth(310)
+        gallery_panel.setMinimumWidth(240)
         gallery_layout = W.QVBoxLayout(gallery_panel)
         gallery_layout.setContentsMargins(0, 0, 0, 0)
         self.gallery_mode = W.QComboBox()
@@ -168,8 +179,14 @@ class ScreenWindow(GateWindow):
         gallery_layout.addWidget(scroll, 1)
         self.gallery_axes = {}
         self.gallery_canvas.mpl_connect("button_press_event", self.select_gallery)
-        self.body_layout.addWidget(gallery_panel, 2)
-        self.body_layout.setStretch(1, 3)
+        self.body_layout.removeWidget(self.main_scroll)
+        self.plot_splitter = W.QSplitter(QtCore.Qt.Horizontal)
+        self.plot_splitter.setChildrenCollapsible(False)
+        self.plot_splitter.addWidget(self.main_scroll)
+        self.plot_splitter.addWidget(gallery_panel)
+        self.plot_splitter.setStretchFactor(0, 3)
+        self.plot_splitter.setStretchFactor(1, 2)
+        self.body_layout.addWidget(self.plot_splitter, 1)
         self.canvas.mpl_connect("scroll_event", self.scroll_zoom)
         self.canvas.mpl_connect("pick_event", self.pick_population)
         self.picked = {}
@@ -246,6 +263,12 @@ class ScreenWindow(GateWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if getattr(self, "ready", False):
+            compact = self.height() < 800
+            self.stack.setMinimumHeight(300 if compact else 380)
+            self.canvas.setMinimumHeight(200 if compact else 260)
+            self.main_layout.setSpacing(6 if compact else 10)
+            self.note.setVisible(not compact)
+            self.scope.setVisible(not compact)
             self.request_gallery()
 
     def toggle_focus(self, checked):
@@ -491,7 +514,7 @@ class ScreenWindow(GateWindow):
             ):
                 for artist in draw_boundary(self.ax, other, "#5848a8", 1.6, True):
                     self.picked[artist] = other["name"]
-        preview = gate["kind"] == "polygon" and any(m != "recipe" for m in modes[: len(gate["channels"])])
+        preview = self.polygon_preview(gate)
         if preview:
             if self.selector:
                 self.selector.set_active(False)
@@ -506,6 +529,7 @@ class ScreenWindow(GateWindow):
                 + " Scroll to zoom. Scatter displays up to 20,000 events per sample; counts use all events."
             )
         self.help.setToolTip(self.help.text())
+        self.review_badge.setToolTip(self.note.text())
         self.edit_button.setEnabled(not preview)
         self.bounds_widget.setEnabled(not preview)
         self.y_scale.setEnabled(len(gate["channels"]) == 2)
@@ -733,9 +757,18 @@ class ScreenWindow(GateWindow):
             setter(*bounds)
         self.canvas.draw_idle()
 
+    def polygon_preview(self, gate):
+        if not gate or gate["kind"] != "polygon":
+            return False
+        for channel, combo in zip(gate["channels"], [self.x_scale, self.y_scale]):
+            mode = ["recipe", "linear", "asinh", "logicle"][combo.currentIndex()]
+            if mode != "recipe" and display_spec(mode) != self.state.recipe["transforms"][channel]:
+                return True
+        return False
+
     def edit_mode(self):
         super().edit_mode()
-        if self.ready and any(c.currentIndex() for c in [self.x_scale, self.y_scale]) and self.selector:
+        if self.ready and self.selector and self.polygon_preview(self.state.gate(self.active_name)):
             self.selector.set_active(False)
 
     def save(self):
@@ -815,7 +848,7 @@ class ScreenWindow(GateWindow):
     def matrix_dialog(self):
         super().matrix_dialog(allow_import=not bool(self.record.get("compensation_path")))
 
-    def new_population(self):
+    def new_population(self, preferred_kind=None):
         active = self.state.gate(self.active_name)
         if active is None:
             return
@@ -835,6 +868,8 @@ class ScreenWindow(GateWindow):
             combo.addItems(list(self.state.recipe["transforms"]))
         x.setCurrentText(active["channels"][0])
         y.setCurrentText(active["channels"][-1])
+        if x.currentText() == y.currentText() and y.count() > 1:
+            y.setCurrentIndex((x.currentIndex() + 1) % y.count())
         parent.addItems(["root"] + [g["name"] for g in self.state.recipe["gates"]])
         relationship = W.QComboBox()
         relationship.setObjectName("population_relationship")
@@ -879,7 +914,7 @@ class ScreenWindow(GateWindow):
             lambda text: [form.setRowVisible(field, text == "boolean") for field in [left, right, operation]]
         )
         kind.currentTextChanged.connect(lambda text: form.setRowVisible(y, text != "range"))
-        kind.setCurrentText("range" if len(active["channels"]) == 1 else "rectangle")
+        kind.setCurrentText(preferred_kind or ("range" if len(active["channels"]) == 1 else "rectangle"))
         message = label("Choose channels and a parent, then reshape the draft gate in the plot.", "muted")
         message.setWordWrap(True)
         form.addRow(message)
@@ -916,6 +951,14 @@ class ScreenWindow(GateWindow):
                 self.state.apply(candidate)
                 self.rebuild(gate["name"])
                 dialog.accept()
+                if gate["kind"] == "polygon":
+                    self.gating_axes()
+                    self.selector.clear()
+                    self.help.setText(
+                        "Click each vertex, then click the first vertex to finish. "
+                        "The draft population is replaced when you finish drawing."
+                    )
+                    self.help.setToolTip(self.help.text())
             except (ValueError, KeyError, TypeError) as error:
                 message.setText(str(error))
 

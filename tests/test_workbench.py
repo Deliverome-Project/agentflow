@@ -3,6 +3,7 @@ import json
 import os
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -303,6 +304,58 @@ def test_small_window_keeps_plot_and_labels_separate(window):
     assert window.canvas.geometry().bottom() < window.help.geometry().top()
     assert all(ax.get_subplotspec().get_gridspec().ncols == 1 for ax in window.gallery_axes)
     assert not window.parent_button.isHidden()
+
+
+@pytest.mark.parametrize("size", [(1280, 720), (980, 620)])
+def test_laptop_layout_keeps_save_and_polygon_accessible(window, size):
+    from PySide6.QtTest import QTest
+
+    window.resize(*size)
+    QTest.qWait(150)
+    assert window.width() <= size[0]
+    assert window.height() <= size[1]
+    root = window.centralWidget()
+    for widget in (window.save_button, window.polygon_button):
+        position = widget.mapTo(root, QtCore.QPoint(0, 0))
+        assert root.rect().contains(QtCore.QRect(position, widget.size()))
+    assert window.plot_splitter.count() == 2
+
+
+def test_draw_polygon_from_histogram_and_save_vertices(window):
+    from matplotlib.backend_bases import MouseEvent
+
+    from agentflow.engine import load_recipe
+
+    def fill():
+        dialog = W.QApplication.activeModalWidget()
+        assert dialog.findChild(W.QComboBox, "gate_kind").currentText() == "polygon"
+        x = dialog.findChild(W.QComboBox, "x_detector")
+        y = dialog.findChild(W.QComboBox, "y_detector")
+        assert x.currentText() != y.currentText()
+        dialog.findChild(W.QLineEdit, "population_name").setText("custom_polygon")
+        x.setCurrentText("BL1-A")
+        y.setCurrentText("YL2-A")
+        next(b for b in dialog.findChildren(W.QPushButton) if b.text() == "Add draft population").click()
+
+    QtCore.QTimer.singleShot(0, fill)
+    window.polygon_button.click()
+    window.canvas.draw()
+    bounds = window.ax.get_xlim(), window.ax.get_ylim()
+    vertices = [
+        [bounds[0][0] + fx * (bounds[0][1] - bounds[0][0]), bounds[1][0] + fy * (bounds[1][1] - bounds[1][0])]
+        for fx, fy in [(0.2, 0.2), (0.8, 0.2), (0.5, 0.8)]
+    ]
+    for vertex in vertices + vertices[:1]:
+        x, y = window.ax.transData.transform(vertex)
+        for name in ("motion_notify_event", "button_press_event", "button_release_event"):
+            event = MouseEvent(name, window.canvas, x, y, button=1)
+            window.canvas.callbacks.process(name, event)
+    np.testing.assert_allclose(window.state.gate("custom_polygon")["vertices"], vertices)
+    assert window.save_changes()
+    saved = load_recipe(window.state.path.with_suffix(".reproducibility.yaml"))
+    gate = next(g for g in saved["gates"] if g["name"] == "custom_polygon")
+    assert gate["parent"] == "live"
+    np.testing.assert_allclose(gate["vertices"], vertices)
 
 
 def test_save_continue_then_edit_requires_save_again(window):

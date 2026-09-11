@@ -36,7 +36,17 @@ agentflow screen runs/01 --gate gfp --metric percent_parent --out screens/01
   names and counts. Click a plot to edit that population. Gates sharing the same
   parent and detector pair also appear together on the main plot; click a boundary
   to select it. **New population** adds a range, rectangle, polygon or AND/OR
-  combination of existing gates.
+  combination of existing gates. **Draw polygon…** provides a direct shortcut:
+  choose a name, parent and two detectors, then click vertices in the plot and
+  click the first vertex to finish. Until completion, counts refer to the initial
+  draft extent. The completed vertices are saved exactly in the recipe/YAML.
+  Polygon editing uses gating coordinates; equivalent linear axes remain editable.
+- The window opens within the available desktop area. Drag the divider between
+  the editable plot and gallery, or select **Focus plot** for more plot width.
+  Short windows use a compact plot and put supporting notes in the draft/review
+  badge tooltip; remaining controls can be reached by scrolling the main panel.
+  **Analysis** contains detector inspection, compensation calculation, pinned
+  controls and resetting sample exceptions, alongside save/run/open actions.
 - **Compare samples** shows the selected population across samples with common
   limits. The gallery is paginated at twelve samples/populations to bound canvas
   size. **Plate map** shows one plate per page; click a populated well to select

@@ -63,8 +63,8 @@ class GateWindow(W.QMainWindow):
         root = W.QWidget(objectName="root")
         self.setCentralWidget(root)
         layout = W.QVBoxLayout(root)
-        layout.setContentsMargins(28, 20, 28, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
         self.root_layout = layout
         header = W.QHBoxLayout()
         header.addWidget(label("agentflow", "brand"))
@@ -80,7 +80,7 @@ class GateWindow(W.QMainWindow):
         layout.addLayout(body, 1)
         sidebar = W.QVBoxLayout()
         side = W.QWidget()
-        side.setFixedWidth(226)
+        side.setFixedWidth(190)
         side.setLayout(sidebar)
         sidebar.setContentsMargins(0, 0, 0, 0)
         sidebar.addWidget(label("POPULATIONS", "eyebrow"))
@@ -112,7 +112,7 @@ class GateWindow(W.QMainWindow):
         main_scroll.setWidgetResizable(True)
         main_scroll.setFrameShape(W.QFrame.NoFrame)
         main_scroll.setWidget(main_widget)
-        main_scroll.setMinimumWidth(420)
+        main_scroll.setMinimumWidth(360)
         self.main_scroll = main_scroll
         body.addWidget(main_scroll, 1)
         self.title = label("", "title")
