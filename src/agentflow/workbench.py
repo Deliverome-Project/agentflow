@@ -170,21 +170,27 @@ class ScreenWindow(GateWindow):
         gallery_layout.addWidget(self.plate_metric)
         self.plate_metric.hide()
         paging = W.QHBoxLayout()
-        paging.addWidget(label("Page", "muted"))
+        paging.addWidget(button("‹", lambda: self.gallery_page.setValue(self.gallery_page.value() - 1)))
         self.gallery_page = W.QSpinBox()
         self.gallery_page.setMinimum(1)
         self.gallery_page.valueChanged.connect(self.request_gallery)
+        self.gallery_page.hide()
         paging.addWidget(self.gallery_page)
+        paging.addWidget(button("›", lambda: self.gallery_page.setValue(self.gallery_page.value() + 1)))
+        self.gallery_range = label("", "muted")
+        self.gallery_range.setWordWrap(True)
+        paging.insertWidget(0, self.gallery_range, 1)
         paging.addStretch()
         gallery_layout.addLayout(paging)
-        gallery_layout.addWidget(label("Click a plot to select it", "muted"))
+        self.gallery_mode.setToolTip(
+            "Click a plot to select its population or sample. Use arrows for more plots."
+        )
         self.gallery_figure = Figure(figsize=(5, 8), facecolor="white")
         self.gallery_canvas = FigureCanvasQTAgg(self.gallery_figure)
-        self.gallery_canvas.setMinimumHeight(600)
-        scroll = W.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(self.gallery_canvas)
-        gallery_layout.addWidget(scroll, 1)
+        self.gallery_canvas.installEventFilter(self)
+        self.gallery_canvas.setMinimumHeight(120)
+        self.gallery_canvas.setSizePolicy(W.QSizePolicy.Expanding, W.QSizePolicy.Ignored)
+        gallery_layout.addWidget(self.gallery_canvas, 1)
         self.gallery_axes = {}
         self.gallery_canvas.mpl_connect("button_press_event", self.select_gallery)
         self.body_layout.removeWidget(self.main_scroll)
@@ -272,12 +278,17 @@ class ScreenWindow(GateWindow):
         super().resizeEvent(event)
         if getattr(self, "ready", False):
             compact = self.height() < 800
-            self.stack.setMinimumHeight(300 if compact else 380)
-            self.canvas.setMinimumHeight(200 if compact else 260)
-            self.main_layout.setSpacing(6 if compact else 10)
+            self.stack.setMinimumHeight(180 if compact else 280)
+            self.canvas.setMinimumHeight(90 if compact else 180)
+            self.main_layout.setSpacing(4 if compact else 6)
             self.note.setVisible(not compact)
             self.scope.setVisible(not compact)
             self.request_gallery()
+
+    def eventFilter(self, watched, event):
+        if watched is getattr(self, "gallery_canvas", None) and event.type() == QtCore.QEvent.Resize:
+            self.request_gallery()
+        return super().eventFilter(watched, event)
 
     def toggle_focus(self, checked):
         if not self.ready:
@@ -603,14 +614,16 @@ class ScreenWindow(GateWindow):
         items = self.selected_records() if compare else self.state.active_recipe["gates"]
         if self.gallery_mode.currentText() == "Ancestry":
             items = self.ancestry()
-        self.gallery_page.setMaximum(max(1, (len(items) + 11) // 12))
-        start = (self.gallery_page.value() - 1) * 12
+        columns = 1 if self.gallery_canvas.width() < 380 else 2
+        available_rows = max(1, self.gallery_canvas.height() // 180)
+        capacity = min(12, columns * available_rows)
+        self.gallery_page.setMaximum(max(1, (len(items) + capacity - 1) // capacity))
+        start = (self.gallery_page.value() - 1) * capacity
         all_items = items
-        items = items[start : start + 12]
+        items = items[start : start + capacity]
         n = len(items)
-        columns = 1 if self.gallery_canvas.width() < 420 else 2
         rows = max(1, (n + columns - 1) // columns)
-        self.gallery_canvas.setMinimumHeight(rows * 260)
+        self.gallery_range.setText(f"{start + 1 if n else 0}–{start + n} of {len(all_items)} plots")
         shared_limits = None
         active = self.state.gate(self.active_name)
         if compare and active:
@@ -725,7 +738,7 @@ class ScreenWindow(GateWindow):
             image, ax=ax, orientation="horizontal", pad=0.12, label=self.plate_metric.currentText()
         )
         self.gallery_axes[ax] = ("plate", positions)
-        self.gallery_canvas.setMinimumHeight(500)
+        self.gallery_range.setText(f"Plate {self.gallery_page.value()} of {len(plates)}")
         self.gallery_figure.tight_layout()
         self.gallery_canvas.draw_idle()
 
@@ -946,7 +959,6 @@ class ScreenWindow(GateWindow):
                 self.state.apply(candidate)
                 self.rebuild(gate["name"])
                 self.plot_type.setCurrentText("Scatter")
-                self.focus_plot.setChecked(True)
                 dialog.accept()
             except (ValueError, KeyError, TypeError) as error:
                 note.setText(str(error))

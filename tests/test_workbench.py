@@ -36,19 +36,44 @@ def window(demo, tmp_path):
     app.processEvents()
 
 
+def gallery_items(window):
+    items = []
+    window.update_gallery()
+    for page in range(1, window.gallery_page.maximum() + 1):
+        window.gallery_page.setValue(page)
+        window.update_gallery()
+        items.extend(window.gallery_axes.items())
+    return items
+
+
+def find_gallery(window, target):
+    window.update_gallery()
+    for page in range(1, window.gallery_page.maximum() + 1):
+        window.gallery_page.setValue(page)
+        window.update_gallery()
+        for ax, value in window.gallery_axes.items():
+            if value == target:
+                return ax
+    raise AssertionError(f"Missing plot: {target}")
+
+
 def test_gallery_detector_labels_selection_and_sample_comparison(window):
-    assert len(window.gallery_axes) == 6
+    assert len(gallery_items(window)) == 6
     assert all(ax.get_xlabel() for ax in window.gallery_axes)
-    ax = next(ax for ax, value in window.gallery_axes.items() if value == ("gate", "gfp"))
+    ax = find_gallery(window, ("gate", "gfp"))
     window.select_gallery(SimpleNamespace(inaxes=ax))
     assert window.active_name == "gfp"
     window.gallery_mode.setCurrentIndex(1)
     W.QApplication.processEvents()
-    assert len(window.gallery_axes) == 3
-    ax = next(ax for ax, value in window.gallery_axes.items() if value == ("sample", "DUMMY-3"))
+    assert len(gallery_items(window)) == 3
+    ax = find_gallery(window, ("sample", "DUMMY-3"))
     window.select_gallery(SimpleNamespace(inaxes=ax))
     assert window.record["sample_id"] == "DUMMY-3"
-    limits = [ax.get_xlim() for ax in window.gallery_axes]
+    limits = []
+    for page in range(1, window.gallery_page.maximum() + 1):
+        window.gallery_page.setValue(page)
+        window.update_gallery()
+        limits.extend(ax.get_xlim() for ax in window.gallery_axes)
     assert all(lim == limits[0] for lim in limits)
 
 
@@ -236,7 +261,7 @@ def test_population_tree_ancestry_and_parent_navigation(window):
     window.gates.setCurrentRow(window.names.index("gfp"))
     window.gallery_mode.setCurrentText("Ancestry")
     W.QApplication.processEvents()
-    assert [value[1] for value in window.gallery_axes.values()] == ["cells", "singlets", "live", "gfp"]
+    assert [value[1] for _, value in gallery_items(window)] == ["cells", "singlets", "live", "gfp"]
     nodes["cells"].setExpanded(False)
     window.select_parent()
     assert window.active_name == "live"
@@ -287,7 +312,7 @@ def test_focus_plot_enlarges_canvas_and_saves_view(window):
     window.focus_plot.setChecked(False)
     W.QApplication.processEvents()
     assert not window.gallery_panel.isHidden()
-    assert len(window.gallery_axes) == 3
+    assert len(gallery_items(window)) == 3
     window.save()
     saved = json.loads(window.state.path.read_text())
     assert saved["display"]["gallery_mode"] == "Ancestry"
@@ -300,7 +325,7 @@ def test_small_window_keeps_plot_and_labels_separate(window):
     window.gallery_mode.setCurrentText("Ancestry")
     QTest.qWait(100)
     W.QApplication.processEvents()
-    assert window.canvas.height() >= 260
+    assert window.canvas.height() >= 180
     assert window.canvas.geometry().bottom() < window.help.geometry().top()
     assert all(ax.get_subplotspec().get_gridspec().ncols == 1 for ax in window.gallery_axes)
     assert not window.parent_button.isHidden()
@@ -577,3 +602,40 @@ def test_launcher_opens_yaml_and_rejects_ambiguous_recipe(window, demo, tmp_path
     launcher.grab().save("/private/tmp/agentflow-polished-launcher.png")
     launcher.close()
     other.close()
+
+
+@pytest.mark.parametrize("size", [(980, 620), (1280, 720), (1440, 900)])
+def test_counts_and_gallery_fit_without_scrolling(window, size):
+    window.resize(*size)
+    window.show_gate("live")
+    W.QApplication.processEvents()
+    window.update_gallery()
+    W.QApplication.processEvents()
+    from PySide6.QtTest import QTest
+
+    QTest.qWait(150)
+    assert (window.width(), window.height()) == size
+    assert window.plot_scroll.verticalScrollBar().maximum() == 0, [
+        (x.__class__.__name__, x.height(), x.minimumSizeHint().height())
+        for x in (
+            window.plot_scroll,
+            window.title,
+            window.subtitle,
+            window.stack,
+            window.canvas,
+            window.bounds_widget,
+        )
+    ]
+    for widget in (window.count, window.percent, window.review_button, window.gallery_canvas):
+        top = widget.mapTo(window, QtCore.QPoint(0, 0))
+        assert top.y() >= 0
+        assert top.y() + widget.height() < window.height()
+    assert window.gallery_canvas.height() <= window.gallery_panel.height()
+    assert len(window.gallery_axes) >= 1
+    window.gallery_canvas.draw()
+    renderer = window.gallery_canvas.get_renderer()
+    for ax in window.gallery_axes:
+        extent = ax.get_tightbbox(renderer)
+        assert extent.y0 >= -1
+        assert extent.y1 <= window.gallery_canvas.height() + 1
+    window.grab().save(f"/private/tmp/agentflow-layout-{size[0]}x{size[1]}.png")

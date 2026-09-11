@@ -37,8 +37,8 @@ recipes retain their selection until the user changes it. Reporter initializatio
 uses finite data-derived bounds as a draft, not biological thresholds.
 
 **GFP / Cy5…** opens a labelled-detector dialog to create a shared ratio population
-and display its scatter plot. The plot opens focused; uncheck **Focus plot** to
-restore the population gallery. The detector pair is editable; dye roles are only
+and display its scatter plot. The population gallery remains visible. **Focus plot** can hide it when
+you want more space for the active plot. The detector pair is editable; dye roles are only
 initial selections. Ratio = numerator signal / denominator signal after the chosen
 compensation and before asinh/logicle display transforms. The lower ratio bound is
 inclusive and upper bound exclusive. Denominator must be strictly greater than the
@@ -66,3 +66,8 @@ on ratio dimensions. Agentflow corrects that behavior in its vendored FlowKit.
 Agentflow YAML is an application-specific reproducibility record, not a claim of
 MIFlowCyt compliance or an implementation of ACS/CLR. Instrument metadata alone
 cannot supply missing biological context, reagent identities or control design.
+
+Event counts and review actions stay outside the scrolling plot settings. The
+comparison gallery fits a page of plots to its available height and width; use
+the left/right arrows for more plots. Resizing the window or divider updates
+the page capacity. The default gating view fits at 980×620 and larger.
