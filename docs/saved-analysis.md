@@ -110,3 +110,20 @@ The desktop uses white surfaces with a pale neutral sidebar. Comparison thumbnai
 use a compact grid (two columns when panel width permits) and show at least two
 plots per page at supported window sizes. Selecting a thumbnail still opens its
 sample or population in the main editable plot.
+
+### Remove a subpopulation
+
+Right-click the population and choose **Delete population…**, or use
+**Analysis → Delete selected population…**. The confirmation lists the selected
+population, its descendants, and Boolean populations that depend on them. They
+are removed together, including their sample exceptions; unrelated gates retain
+their definitions. Use **Undo** to restore the change or **Save** to persist it.
+Population structure is shared, so select **All samples** first. The editor
+currently requires at least one population to remain.
+
+The synthetic demo's low/high groups mean low/high **positive fraction**, not
+low/high fluorescence per positive cell. Each reporter independently receives
+positive signals with probabilities 5%, 25%, and 60% across the three samples.
+The same positive signal increment is used in all three. These are predefined
+sample-sheet groups, not inferred classifications, and the demo negative control
+is not an unstained control.

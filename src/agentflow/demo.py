@@ -70,7 +70,7 @@ def make_demo(output):
                 "fcs_path": str(out / filename),
                 "well": f"A0{i + 1}",
                 "condition": ["control", "low", "high"][i],
-                "group": ["Negative control", "Low expression", "High expression"][i],
+                "group": ["Negative control", "Low positive fraction", "High positive fraction"][i],
                 "color": ["#3d6b60", "#5848a8", "#922038"][i],
                 "plate": "DUMMY-PLATE-1",
                 "replicate": "1",
@@ -113,6 +113,10 @@ def make_demo(output):
     (out / "README.md").write_text(
         "# DUMMY / SYNTHETIC EXAMPLE\n\nGenerated with seed 42; no experimental data.\n\n"
         "Four single-stain controls estimate compensation. All workflow gates remain draft drawing aids.\n"
-        "Compare compensation.json with expected-spillover.json; inspect the control evidence.\n"
+        "Compare compensation.json with expected-spillover.json; inspect the control evidence.\n\n"
+        "Group labels are generator inputs, not inferred classifications: reporter-positive probabilities "
+        "are 5%, 25%, and 60% per reporter, sampled independently. Positive events receive the same "
+        "20,000-unit signal increment in every group. The demo negative control has 5% positives; "
+        "it is not an unstained control. Real groups come from the sample sheet.\n"
     )
     return out

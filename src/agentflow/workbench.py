@@ -36,6 +36,9 @@ class ScreenWindow(GateWindow):
         analysis_menu.addAction("Save and keep editing", lambda: self.save_changes(close=False))
         analysis_menu.addAction("Save and run all samples…", self.run_analysis)
         analysis_menu.addSeparator()
+        analysis_menu.addAction("Delete selected population…", self.delete_population)
+        self.gates.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.gates.customContextMenuRequested.connect(self.population_menu)
         analysis_menu.addAction("Detectors…", self.detectors_dialog)
         analysis_menu.addAction("Calculate compensation…", self.compensation_wizard)
         analysis_menu.addAction("Pinned controls…", self.pin_dialog)
@@ -967,6 +970,42 @@ class ScreenWindow(GateWindow):
         form.addRow(button("Show scatter and apply ratio", create, True))
         form.addRow(button("Cancel", dialog.reject))
         dialog.exec()
+
+    def population_menu(self, position):
+        item = self.gates.itemAt(position)
+        if item is None:
+            return
+        self.gates.setCurrentItem(item)
+        if self.active_name != item.data(0, QtCore.Qt.UserRole):
+            return
+        menu = W.QMenu(self)
+        menu.addAction("New subpopulation…", self.new_population)
+        menu.addAction("Delete population…", self.delete_population)
+        menu.exec(self.gates.viewport().mapToGlobal(position))
+
+    def delete_population(self):
+        try:
+            self.flush_bounds()
+            affected = self.state.deletion_set(self.active_name)
+            parent = self.state.gate(self.active_name)["parent"]
+            message = W.QMessageBox(self)
+            message.setWindowTitle("Delete population")
+            message.setText(f"Remove {len(affected)} population(s) from all samples?")
+            message.setInformativeText(
+                "This includes child and dependent populations:\n"
+                + ", ".join(affected)
+                + "\n\nYou can Undo this change. It is written to the recipe when you save."
+            )
+            message.setStandardButtons(W.QMessageBox.Cancel | W.QMessageBox.Yes)
+            message.button(W.QMessageBox.Yes).setText("Delete populations")
+            message.setDefaultButton(W.QMessageBox.Cancel)
+            if message.exec() != W.QMessageBox.Yes:
+                return
+            self.state.delete_population(self.active_name)
+            self.rebuild(parent)
+            self.message.setText(f"Removed {len(affected)} population(s). Undo restores them.")
+        except (ValueError, KeyError) as error:
+            self.message.setText(str(error))
 
     def scatter_dialog(self):
         from .scatter_viewer import ScatterDialog

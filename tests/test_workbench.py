@@ -222,7 +222,7 @@ def test_sample_exception_shared_counts_save_and_undo(window):
 def test_pinned_reference_survives_group_filter(window):
     window.pinned = {"DUMMY-1"}
     window.sample_choice.setCurrentIndex(2)
-    window.group_choice.setCurrentText("High expression")
+    window.group_choice.setCurrentText("High positive fraction")
     assert [r["sample_id"] for r in window.plot_records()] == ["DUMMY-1", "DUMMY-3"]
     assert any("Pinned · DUMMY-1" in t.get_text() for t in window.ax.get_legend().texts)
     window.save()
@@ -279,7 +279,7 @@ def test_sample_steps_respect_filters_and_flush_edits(window):
     assert "DUMMY-1" in window.state.recipe["sample_overrides"]
     window.step_sample(-1)
     assert float(window.upper.text()) == pytest.approx(2000)
-    window.group_choice.setCurrentText("High expression")
+    window.group_choice.setCurrentText("High positive fraction")
     window.step_sample(1)
     assert window.record["sample_id"] == "DUMMY-3"
     assert not window.next_sample.isEnabled()
@@ -694,3 +694,56 @@ def test_compact_sample_comparison_shows_multiple_plots(window, size, minimum):
         assert extent.y0 >= -1
         assert extent.y1 <= window.gallery_canvas.height() + 1
     window.grab().save(f"/private/tmp/agentflow-compare-{size[0]}x{size[1]}.png")
+
+
+def test_delete_population_cascade_cancel_undo_and_save(window, monkeypatch):
+    from agentflow.engine import load_recipe
+
+    candidate = copy.deepcopy(window.state.recipe)
+    candidate["gates"].extend(
+        [
+            {
+                "name": "gfp_child",
+                "parent": "gfp",
+                "kind": "range",
+                "channels": ["BL1-A"],
+                "bounds": [5, 7],
+                "reviewed": False,
+            },
+            {
+                "name": "double",
+                "parent": "live",
+                "kind": "boolean",
+                "channels": ["BL1-A", "RL1-A"],
+                "references": ["gfp", "cy5"],
+                "operation": "and",
+                "reviewed": False,
+            },
+        ]
+    )
+    candidate["sample_overrides"] = {"DUMMY-2": {"gfp": {"reviewed": True}, "cy5": {"reviewed": True}}}
+    window.state.apply(candidate)
+    window.rebuild("gfp")
+    before = copy.deepcopy(window.state.recipe)
+    monkeypatch.setattr(W.QMessageBox, "exec", lambda self: W.QMessageBox.Cancel)
+    window.delete_population()
+    assert window.state.recipe == before
+    monkeypatch.setattr(W.QMessageBox, "exec", lambda self: W.QMessageBox.Yes)
+    assert window.state.deletion_set("gfp") == ["gfp", "gfp_child", "double"]
+    window.delete_population()
+    assert window.active_name == "live"
+    assert all(window.state.gate(n) is None for n in ["gfp", "gfp_child", "double"])
+    assert window.state.recipe["sample_overrides"]["DUMMY-2"] == {"cy5": {"reviewed": True}}
+    assert window.state.counts()["cy5"] > 0
+    window.travel(False)
+    assert window.state.recipe == before
+    window.travel(True)
+    assert window.state.gate("gfp") is None
+    window.save_changes(close=False)
+    assert all(g["name"] != "gfp" for g in load_recipe(window.state.path)["gates"])
+    window.state.sample_scope = True
+    with pytest.raises(ValueError, match="All samples"):
+        window.state.delete_population("cy5")
+    window.state.sample_scope = False
+    with pytest.raises(ValueError, match="at least one"):
+        window.state.delete_population("cells")

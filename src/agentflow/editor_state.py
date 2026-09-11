@@ -103,6 +103,29 @@ class EditorState:
             next(g for g in candidate["gates"] if g["name"] == name)["reviewed"] = True
         self.apply(candidate)
 
+    def deletion_set(self, name):
+        """Include descendants and Boolean dependents in recipe order."""
+        if self.sample_scope:
+            raise ValueError("Population structure is shared. Select All samples to delete a population.")
+        if not any(g["name"] == name for g in self.recipe["gates"]):
+            raise ValueError("Select an existing population to delete.")
+        affected = {name}
+        for gate in self.recipe["gates"]:
+            if gate["parent"] in affected or affected.intersection(gate.get("references", [])):
+                affected.add(gate["name"])
+        if len(affected) == len(self.recipe["gates"]):
+            raise ValueError("Keep at least one population in the editor; delete a subpopulation instead.")
+        return [g["name"] for g in self.recipe["gates"] if g["name"] in affected]
+
+    def delete_population(self, name):
+        affected = set(self.deletion_set(name))
+        candidate = copy.deepcopy(self.recipe)
+        candidate["gates"] = [g for g in candidate["gates"] if g["name"] not in affected]
+        for changes in candidate.get("sample_overrides", {}).values():
+            for removed in affected:
+                changes.pop(removed, None)
+        self.apply(candidate)
+
     def assign(self, name, channel):
         self.apply(add_reporter(self.recipe, self.prepared.sample, name, channel, confirmed=True), True)
 
