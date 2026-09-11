@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from ._vendor import flowkit as fk
+from .acquisition import acquisition_settings, check_acquisition, upper_limits
 
 
 def validate_compensation(spec):
@@ -62,6 +63,8 @@ def resolve_compensation(sample, spec):
         spec["detectors"],
         fluorochromes=spec.get("fluorochromes", spec["detectors"]),
     )
+    if spec.get("acquisition"):
+        check_acquisition(spec["acquisition"], acquisition_settings(sample, spec["detectors"]))
     sample.apply_compensation(matrix)
     return matrix
 
@@ -132,6 +135,7 @@ def estimate_controls(config_path):
         raise ValueError("min_events must be an integer of at least 2")
     matrix = np.eye(len(detectors))
     evidence = []
+    acquisition = None
     for control in controls:
         source = control["detector"]
         fcs = path.parent / control["fcs_path"]
@@ -140,6 +144,14 @@ def estimate_controls(config_path):
         missing = set(detectors) - set(sample.pnn_labels)
         if missing:
             raise ValueError(f"Control missing detectors: {sorted(missing)}")
+        fluorescence = {sample.pnn_labels[i] for i in sample.fluoro_indices}
+        if not set(detectors) <= fluorescence:
+            raise ValueError("Compensation controls must name fluorescence detectors, not scatter or time")
+        settings = acquisition_settings(sample, detectors)
+        if acquisition is None:
+            acquisition = settings
+        else:
+            check_acquisition(acquisition, settings)
         indices = [sample.pnn_labels.index(d) for d in detectors]
         data = sample.get_events(source="raw")[:, indices]
         if not np.isfinite(data).all():
@@ -162,9 +174,10 @@ def estimate_controls(config_path):
         if delta[j] <= 0:
             raise ValueError(f"{source}: positive signal must exceed negative signal")
         # Saturated bright controls cannot determine spillover reliably.
-        limit = float(sample.channels.iloc[indices[j]]["pnr"]) - 1
-        if np.any(data[pos, j] >= limit):
-            raise ValueError(f"{source}: positive control includes saturated events")
+        saturated = np.any(data[neg | pos] >= upper_limits(sample)[indices], axis=0)
+        if saturated.any():
+            affected = [d for d, clipped in zip(detectors, saturated) if clipped]
+            raise ValueError(f"{source}: control populations include saturated events in {affected}")
         matrix[j] = delta / delta[j]
         if digest(fcs) != fingerprint:
             raise ValueError("Control file changed during estimation")
@@ -189,11 +202,14 @@ def estimate_controls(config_path):
         "mode": "matrix",
         "detectors": detectors,
         "values": matrix.tolist(),
+        "acquisition": acquisition,
         "estimation": {
             "method": "positive-minus-negative medians",
             "controls": evidence,
             "config_sha256": config_fingerprint,
             "cleanup_recipe_sha256": cleanup_fingerprint,
+            "cleanup_recipe": cleanup,
+            "cleanup_gate": config.get("cleanup_gate") if cleanup is not None else None,
             "reviewed": False,
         },
     }
@@ -245,12 +261,23 @@ def control_diagnostics(config_path, spec, output):
         sample = fk.Sample(str(path))
         columns = [sample.pnn_labels.index(d) for d in detectors]
         raw = sample.get_events(source="raw")[:, columns]
-        compensated = np.linalg.solve(np.asarray(spec["values"]).T, raw.T).T
+        cleanup = spec["estimation"].get("cleanup_recipe")
+        if spec["estimation"].get("cleanup_recipe_sha256") and cleanup is None:
+            raise ValueError("Re-estimate this legacy matrix to review its exact cleanup population")
+        if cleanup is not None:
+            from .engine import evaluate, prepare
+
+            mask = evaluate(prepare(sample, cleanup), cleanup)[spec["estimation"]["cleanup_gate"]]
+        else:
+            mask = np.ones(len(raw), dtype=bool)
+        resolve_compensation(sample, spec)
+        compensated = sample.get_events(source="comp")[mask][:, columns]
+        raw = raw[mask]
         source = detectors.index(control["detector"])
         others = [i for i in range(len(detectors)) if i != source]
         fig = new_figure(4 * len(others), 7)
-        fig.suptitle(f"{control['detector']} single-stain — descriptive QC, review cleanup/thresholds")
-        step = max(1, len(raw) // 5000)
+        fig.suptitle(f"{control['detector']} single-stain — {len(raw):,} cleanup events; review thresholds")
+        step = max(1, (len(raw) + 4999) // 5000)
         for k, target in enumerate(others):
             for row, data in enumerate([raw, compensated]):
                 ax = fig.add_subplot(2, len(others), row * len(others) + k + 1)

@@ -167,8 +167,40 @@ def apply_axes(ax, channels, recipe, modes):
         )
 
 
-def draw_boundary(ax, gate, color="#e2655e", linewidth=1.7, pickable=False):
+def draw_boundary(ax, gate, color="#e2655e", linewidth=1.7, pickable=False, recipe=None):
     """Densify canonical polygon edges before nonlinear display transforms."""
+    if gate["kind"] == "ratio":
+        if recipe is None:
+            raise ValueError("Drawing a ratio boundary requires its display transforms")
+        tx, ty = [make_transform(recipe["transforms"][c]) for c in gate["channels"]]
+        displayed_y = np.linspace(*ax.get_ylim(), 512)
+        signal_y = displayed_y if ty is None else ty.inverse(displayed_y)
+        keep = signal_y > gate["denominator_min"]
+        artists = []
+        for bound in gate["bounds"]:
+            signal_x = signal_y[keep] * bound
+            displayed_x = signal_x if tx is None else tx.apply(signal_x)
+            artists.extend(
+                ax.plot(
+                    displayed_x,
+                    displayed_y[keep],
+                    color=color,
+                    linewidth=linewidth,
+                    picker=6 if pickable else False,
+                    scalex=False,
+                    scaley=False,
+                )
+            )
+        floor = gate["denominator_min"]
+        artists.append(
+            ax.axhline(
+                floor if ty is None else ty.apply(np.array([floor]))[0],
+                color=color,
+                ls=":",
+                linewidth=linewidth,
+            )
+        )
+        return artists
     if gate["kind"] == "boolean":
         return []
     if gate["kind"] == "range":

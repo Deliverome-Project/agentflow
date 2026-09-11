@@ -2,14 +2,17 @@
 
 import numpy as np
 
+from .acquisition import upper_limits
+
 
 def sample_quality(prepared):
     raw = prepared.sample.get_events(source="raw")
     counts = []
+    limits = upper_limits(prepared.sample)
     for i, channel in enumerate(prepared.sample.pnn_labels):
         data = raw[:, i]
         finite = np.isfinite(data)
-        limit = float(prepared.sample.channels.iloc[i]["pnr"]) - 1
+        limit = limits[i]
         at_top = int(np.sum(data[finite] >= limit))
         if at_top:
             counts.append(

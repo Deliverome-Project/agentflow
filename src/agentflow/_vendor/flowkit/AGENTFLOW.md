@@ -12,7 +12,7 @@ Local changes at import:
   GatingML loads from this vendored package rather than a top-level `flowkit`.
 - Add LICENSE, UPSTREAM.json and this maintenance note.
 
-All numerical/gating logic is unchanged. Public access is
+Public access is
 `from agentflow import flowkit`. Keep the upstream version string unchanged;
 Agentflow's run record also fingerprints vendored Python and XSD content to
 identify our actual engine implementation.
@@ -28,3 +28,17 @@ The three XSD schemas have their own embedded ISAC terms (read-only usage and
 free-of-charge distribution; modification reserved). Preserve them byte-for-byte,
 including whitespace and embedded notices. They are standards resources, not
 part of our freely editable Python implementation.
+
+## Ratio support correction (2026-09-10)
+
+- RatioTransform.apply accepts an optional pre-compensated event array, preserving
+  the original raw-sample default. Division by zero retains IEEE nonfinite results.
+- GatingStrategy honors RatioDimension.compensation_ref before taking the ratio,
+  preserves a column per ratio when multiple derived dimensions are present, and
+  copies compensated cache data before channel transformations mutate it.
+- Agentflow compiles ratios into native RectangleGate + RatioDimension and a
+  denominator floor, enabling standard Gating-ML serialization and parsing.
+- Reviewed upstream tests/transform_tests.py at the recorded upstream commit:
+  ratio output remains a 1D ndarray and direct sample transforms remain unsupported.
+  Independent tests/test_ratio.py covers compensated and raw ratios, zero/negative
+  denominators, multiple ratios, cached channel transforms and Gating-ML round trips.

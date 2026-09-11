@@ -63,6 +63,7 @@ def test_default_gates_missing_channels_and_mapping(demo, tmp_path):
     recipe = add_reporter(recipe, demo / "sample-1.fcs", "gfp", "BL1-A")
     recipe = add_reporter(recipe, demo / "sample-1.fcs", "live", "BV1-A")
     assert next(g for g in recipe["gates"] if g["name"] == "gfp")["parent"] == "live"
+    assert all(all(v is not None for v in g["bounds"]) for g in recipe["gates"] if g["kind"] == "range")
     with pytest.raises(ValueError, match="already assigned"):
         add_reporter(recipe, demo / "sample-1.fcs", "cy5", "BL1-A")
 

@@ -40,7 +40,7 @@ def label(text="", style=None):
 
 
 def button(text, callback, primary=False):
-    result = W.QPushButton(text)
+    result = W.QPushButton(text.replace("&", "&&"))
     result.clicked.connect(callback)
     if primary:
         result.setObjectName("primary")
@@ -63,26 +63,26 @@ class GateWindow(W.QMainWindow):
         root = W.QWidget(objectName="root")
         self.setCentralWidget(root)
         layout = W.QVBoxLayout(root)
-        layout.setContentsMargins(28, 20, 28, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
         self.root_layout = layout
         header = W.QHBoxLayout()
         header.addWidget(label("agentflow", "brand"))
         header.addSpacing(18)
-        header.addWidget(label("FLOW CYTOMETRY  /  GATE REVIEW", "eyebrow"))
+        header.addWidget(label("EXPERIMENT WORKSPACE", "eyebrow"))
         header.addStretch()
         if recipe.get("experiment", {}).get("is_example"):
             header.addWidget(label("DUMMY / EXAMPLE", "badge"))
         layout.addLayout(header)
         body = W.QHBoxLayout()
-        body.setSpacing(18)
+        body.setSpacing(12)
         self.body_layout = body
         layout.addLayout(body, 1)
         sidebar = W.QVBoxLayout()
-        side = W.QWidget()
-        side.setFixedWidth(226)
+        side = W.QWidget(objectName="sidebar")
+        side.setFixedWidth(210)
         side.setLayout(sidebar)
-        sidebar.setContentsMargins(0, 0, 0, 0)
+        sidebar.setContentsMargins(12, 16, 12, 12)
         sidebar.addWidget(label("POPULATIONS", "eyebrow"))
         self.progress = label("", "muted")
         sidebar.addWidget(self.progress)
@@ -96,12 +96,14 @@ class GateWindow(W.QMainWindow):
         sidebar.addWidget(sample_name)
         self.event_label = label(f"{prepared.sample.event_count:,} acquired events", "muted")
         sidebar.addWidget(self.event_label)
-        sidebar.addSpacing(20)
+        sidebar.addSpacing(12)
         sidebar.addWidget(label("COMPENSATION", "eyebrow"))
         self.compensation_label = label("", "muted")
         self.compensation_label.setWordWrap(True)
         sidebar.addWidget(self.compensation_label)
         sidebar.addWidget(button("View / change matrix…", self.matrix_dialog))
+        if hasattr(self, "compensation_wizard"):
+            sidebar.addWidget(button("Set up compensation…", self.compensation_wizard))
         body.addWidget(side)
         main = W.QVBoxLayout()
         main.setSpacing(10)
@@ -112,11 +114,12 @@ class GateWindow(W.QMainWindow):
         main_scroll.setWidgetResizable(True)
         main_scroll.setFrameShape(W.QFrame.NoFrame)
         main_scroll.setWidget(main_widget)
-        main_scroll.setMinimumWidth(420)
+        main_scroll.setMinimumWidth(360)
         self.main_scroll = main_scroll
         body.addWidget(main_scroll, 1)
         self.title = label("", "title")
         self.subtitle = label("", "muted")
+        self.subtitle.setWordWrap(True)
         main.addWidget(self.title)
         main.addWidget(self.subtitle)
         self.stack = W.QStackedWidget()
@@ -193,10 +196,14 @@ class GateWindow(W.QMainWindow):
         stats = W.QHBoxLayout()
         self.count = label("", "metric")
         self.percent = label("", "muted")
-        stats.addWidget(self.count)
-        stats.addWidget(self.percent)
+        metrics = W.QVBoxLayout()
+        metrics.setSpacing(1)
+        metrics.addWidget(self.count)
+        metrics.addWidget(self.percent)
+        self.percent.setWordWrap(True)
+        stats.addLayout(metrics, 1)
         stats.addStretch()
-        self.review_button = button("Review & next →", self.review_next)
+        self.review_button = button("Mark reviewed →", self.review_next)
         stats.addWidget(self.review_button)
         main.addLayout(stats)
         self.note = label("", "muted")
@@ -215,7 +222,10 @@ class GateWindow(W.QMainWindow):
         footer.addWidget(self.save_button)
         layout.addLayout(footer)
         for key, callback in [
-            ("Ctrl+S", self.save),
+            (
+                "Ctrl+S",
+                lambda: self.save_changes(close=False) if hasattr(self, "save_changes") else self.save(),
+            ),
             ("Ctrl+Z", lambda: self.travel(False)),
             ("Ctrl+Shift+Z", lambda: self.travel(True)),
         ]:
@@ -280,7 +290,10 @@ class GateWindow(W.QMainWindow):
         gate = self.state.gate(name)
         mapping = self.state.recipe.get("channel_roles", {}).get(name)
         uncertain = mapping is not None and not mapping.get("confirmed", False)
-        self.title.setText(TITLES.get(name, name) + (" candidate" if uncertain else ""))
+        self.title.setText(
+            TITLES.get(name, gate.get("label", name.replace("_", " ")) if gate else name)
+            + (" candidate" if uncertain else "")
+        )
         self.bounds_widget.setVisible(bool(gate and gate["kind"] == "range"))
         self.review_button.setEnabled(gate is not None)
         if gate is None:
@@ -356,6 +369,11 @@ class GateWindow(W.QMainWindow):
             help_text = (
                 "Drag a corner or edge to resize. Drag inside to move; drag outside to draw a new gate."
             )
+        elif kind == "ratio":
+            from .plot_views import draw_boundary
+
+            draw_boundary(self.ax, gate, recipe=self.state.recipe)
+            help_text = "Ratio uses signal before display transforms. Use GFP / Cy5… to edit ratio bounds and denominator cutoff. Saving does not mark gates reviewed."
         elif kind == "boolean":
             help_text = (
                 "Combined population: "
@@ -424,7 +442,10 @@ class GateWindow(W.QMainWindow):
                 parent_count = counts[gate["parent"]]
                 percent = f"{100 * counts[name] / parent_count:.2f}%" if parent_count else "Not available"
                 tooltip += f"\nParent: {gate['parent']} · {percent} of parent\nDetectors: {', '.join(gate['channels'])}"
-            self.gates.set_population_text(i, TITLES.get(name, name), detail, tooltip)
+            self.gates.set_population_text(i, TITLES.get(name, name.replace("_", " ")), detail, tooltip)
+        self.gates.doItemsLayout()
+        if self.gates.currentItem():
+            self.gates.scrollToItem(self.gates.currentItem())
         gate = self.state.gate(self.active_name)
         if gate:
             count, parent = counts[gate["name"]], counts[gate["parent"]]
@@ -446,7 +467,7 @@ class GateWindow(W.QMainWindow):
         self.compensation_label.setText(text)
         self.undo_button.setEnabled(bool(self.state.history))
         self.redo_button.setEnabled(bool(self.state.future))
-        self.save_button.setText("Save changes & close" if self.state.dirty else "Save & close")
+        self.save_button.setText("Save changes && close" if self.state.dirty else "Save && close")
         self.after_refresh()
 
     def after_refresh(self):

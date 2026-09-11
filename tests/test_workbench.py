@@ -3,6 +3,7 @@ import json
 import os
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -305,6 +306,58 @@ def test_small_window_keeps_plot_and_labels_separate(window):
     assert not window.parent_button.isHidden()
 
 
+@pytest.mark.parametrize("size", [(1280, 720), (980, 620)])
+def test_laptop_layout_keeps_save_and_polygon_accessible(window, size):
+    from PySide6.QtTest import QTest
+
+    window.resize(*size)
+    QTest.qWait(150)
+    assert window.width() <= size[0]
+    assert window.height() <= size[1]
+    root = window.centralWidget()
+    for widget in (window.save_button, window.polygon_button):
+        position = widget.mapTo(root, QtCore.QPoint(0, 0))
+        assert root.rect().contains(QtCore.QRect(position, widget.size()))
+    assert window.plot_splitter.count() == 2
+
+
+def test_draw_polygon_from_histogram_and_save_vertices(window):
+    from matplotlib.backend_bases import MouseEvent
+
+    from agentflow.engine import load_recipe
+
+    def fill():
+        dialog = W.QApplication.activeModalWidget()
+        assert dialog.findChild(W.QComboBox, "gate_kind").currentText() == "polygon"
+        x = dialog.findChild(W.QComboBox, "x_detector")
+        y = dialog.findChild(W.QComboBox, "y_detector")
+        assert x.currentText() != y.currentText()
+        dialog.findChild(W.QLineEdit, "population_name").setText("custom_polygon")
+        x.setCurrentText("BL1-A")
+        y.setCurrentText("YL2-A")
+        next(b for b in dialog.findChildren(W.QPushButton) if b.text() == "Add draft population").click()
+
+    QtCore.QTimer.singleShot(0, fill)
+    window.polygon_button.click()
+    window.canvas.draw()
+    bounds = window.ax.get_xlim(), window.ax.get_ylim()
+    vertices = [
+        [bounds[0][0] + fx * (bounds[0][1] - bounds[0][0]), bounds[1][0] + fy * (bounds[1][1] - bounds[1][0])]
+        for fx, fy in [(0.2, 0.2), (0.8, 0.2), (0.5, 0.8)]
+    ]
+    for vertex in vertices + vertices[:1]:
+        x, y = window.ax.transData.transform(vertex)
+        for name in ("motion_notify_event", "button_press_event", "button_release_event"):
+            event = MouseEvent(name, window.canvas, x, y, button=1)
+            window.canvas.callbacks.process(name, event)
+    np.testing.assert_allclose(window.state.gate("custom_polygon")["vertices"], vertices)
+    assert window.save_changes()
+    saved = load_recipe(window.state.path.with_suffix(".reproducibility.yaml"))
+    gate = next(g for g in saved["gates"] if g["name"] == "custom_polygon")
+    assert gate["parent"] == "live"
+    np.testing.assert_allclose(gate["vertices"], vertices)
+
+
 def test_save_continue_then_edit_requires_save_again(window):
     assert window.save_changes(close=False)
     assert window.isVisible()
@@ -417,3 +470,110 @@ def test_failed_analysis_restores_editor(window, tmp_path, monkeypatch):
     assert window.centralWidget().isEnabled()
     assert "already exists" in window.analysis_error
     assert list(output.iterdir()) == []
+
+
+def test_compensation_cleanup_selection_and_small_screen(window, demo, tmp_path, monkeypatch):
+    from agentflow.compensation_wizard import CompensationWizard
+    from agentflow.control_review import resolve_config
+
+    window.records[0]["compensation_path"] = "assigned.json"
+    wizard = CompensationWizard(window, ["BL1-A"])
+    assert "2 of 3" in wizard.assignment_summary.text()
+    assert "keeps assigned matrix" in wizard.assignments.itemText(0)
+    wizard.set_config(resolve_config(json.loads((demo / "controls.json").read_text()), demo))
+    cleanup = {
+        "version": 1,
+        "compensation": {"mode": "none"},
+        "transforms": {"FSC-A": {"kind": "linear"}},
+        "gates": [
+            {"name": "cells", "kind": "range", "parent": "root", "channels": ["FSC-A"], "bounds": [0, None]},
+            {
+                "name": "singlets",
+                "kind": "range",
+                "parent": "cells",
+                "channels": ["FSC-A"],
+                "bounds": [1, None],
+            },
+        ],
+    }
+    path = tmp_path / "cleanup.json"
+    path.write_text(json.dumps(cleanup))
+    monkeypatch.setattr(W.QFileDialog, "getOpenFileName", lambda *a: (str(path), ""))
+    wizard.spec = {"draft": True}
+    wizard.choose_cleanup()
+    assert wizard.spec is None
+    assert wizard.configuration()["cleanup_gate"] == "singlets"
+    wizard.cleanup_gate.setCurrentText("cells")
+    assert wizard.configuration()["cleanup_gate"] == "cells"
+    wizard.clear_cleanup()
+    assert "cleanup_recipe" not in wizard.configuration()
+    wizard.add_row("NEW-A")
+    wizard.table.selectRow(wizard.table.rowCount() - 1)
+    assert wizard.ax is None  # Never edit a previous control's stale histogram.
+    assert "Choose" in wizard.status.text()
+    wizard.resize(980, 620)
+    wizard.show()
+    W.QApplication.processEvents()
+    point = wizard.apply_button.mapTo(wizard, QtCore.QPoint(0, 0))
+    assert point.y() + wizard.apply_button.height() <= wizard.height()
+    assert point.x() + wizard.apply_button.width() <= wizard.width()
+    wizard.grab().save("/private/tmp/agentflow-compensation-setup.png")
+    wizard.reject()
+    window.records[0].pop("compensation_path")
+
+
+def test_ratio_dialog_scatter_and_snapshot(window, tmp_path):
+    import yaml
+
+    def accept_ratio():
+        dialog = W.QApplication.activeModalWidget()
+        for button in dialog.findChildren(W.QPushButton):
+            if button.text() == "Show scatter and apply ratio":
+                button.click()
+                return
+        dialog.reject()
+
+    QtCore.QTimer.singleShot(20, accept_ratio)
+    QtCore.QTimer.singleShot(
+        2000,
+        lambda: W.QApplication.activeModalWidget().reject() if W.QApplication.activeModalWidget() else None,
+    )
+    window.ratio_dialog()
+    gate = window.state.gate("gfp_cy5_ratio")
+    assert gate is not None
+    assert gate["channels"] == ["BL1-A", "RL1-A"]
+    assert window.plot_type.currentText() == "Scatter"
+    assert window.selector is None
+    assert len(window.ax.lines) >= 3
+    window.state.save()
+    snapshot = yaml.safe_load(window.state.path.with_suffix(".reproducibility.yaml").read_text())
+    assert snapshot["inspected_sample"]["instrument"]["detectors"]["BL1-A"]["gain"] == 1
+    assert "fcs_keywords" in snapshot["inspected_sample"]["instrument"]
+    W.QApplication.processEvents()
+    window.grab().save("/private/tmp/agentflow-ratio-scatter.png")
+
+
+def test_launcher_opens_yaml_and_rejects_ambiguous_recipe(window, demo, tmp_path, monkeypatch):
+    import pandas as pd
+
+    from agentflow.launcher import Launcher
+    from agentflow.recipes import save_recipe
+
+    folder = tmp_path / "yaml-project"
+    folder.mkdir()
+    save_recipe(folder / "recipe.yaml", window.state.recipe)
+    pd.DataFrame(read_samples(demo / "workflow/samples.csv")).to_csv(folder / "samples.csv", index=False)
+    monkeypatch.setattr(W.QFileDialog, "getExistingDirectory", lambda *a: str(folder))
+    launcher = Launcher()
+    launcher.open_folder()
+    assert launcher.selection[0].name == "recipe.yaml"
+    save_recipe(folder / "recipe.json", window.state.recipe)
+    other = Launcher()
+    other.open_folder()
+    assert other.selection is None
+    assert "multiple recipes" in other.status.text()
+    launcher.show()
+    W.QApplication.processEvents()
+    launcher.grab().save("/private/tmp/agentflow-polished-launcher.png")
+    launcher.close()
+    other.close()
