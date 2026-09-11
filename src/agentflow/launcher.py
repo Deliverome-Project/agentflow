@@ -18,17 +18,19 @@ class Launcher(W.QDialog):
         super().__init__()
         self.selection = None
         self.setWindowTitle("Agentflow · Open an analysis")
-        self.resize(620, 360)
+        self.resize(680, 440)
         self.setStyleSheet(desktop_style())
         layout = W.QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.addWidget(label("agentflow", "brand"))
-        layout.addWidget(label("Your flow analysis", "title"))
-        layout.addWidget(label("Open a saved analysis or start from FCS files.", "muted"))
-        layout.addWidget(button("Open analysis folder…", self.open_folder, True))
+        layout.addWidget(label("An experiment, clearly understood.", "title"))
+        layout.addWidget(
+            label("Review populations, compare samples, and save a reproducible analysis.", "muted")
+        )
+        layout.addWidget(button("Continue an experiment  ·  Open analysis folder…", self.open_folder, True))
         layout.addWidget(button("Choose recipe and sample sheet…", self.open_files))
-        layout.addWidget(button("Import FCS files…", self.import_files))
-        self.status = label("Analysis folders contain recipe.json and samples.csv.", "muted")
+        layout.addWidget(button("Start an experiment  ·  Import FCS files…", self.import_files))
+        self.status = label("Choose one recipe (YAML or JSON) and a sample sheet. FCS inputs stay unchanged.", "muted")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
@@ -50,7 +52,14 @@ class Launcher(W.QDialog):
     def open_folder(self):
         folder = W.QFileDialog.getExistingDirectory(self, "Open analysis folder")
         if folder:
-            self.select(Path(folder) / "recipe.json", Path(folder) / "samples.csv")
+            candidates = [Path(folder) / name for name in ("recipe.yaml", "recipe.yml", "recipe.json")]
+            found = [path for path in candidates if path.is_file()]
+            if len(found) != 1:
+                self.status.setText(
+                    "Choose recipe and sample sheet to select the intended recipe; this folder has multiple recipes or none."
+                )
+                return
+            self.select(found[0], Path(folder) / "samples.csv")
 
     def open_files(self):
         recipe, _ = W.QFileDialog.getOpenFileName(self, "Choose recipe", "", "Recipes (*.json *.yaml *.yml)")

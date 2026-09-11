@@ -69,7 +69,10 @@ class ScreenWindow(GateWindow):
         self.overlay.toggled.connect(self.redraw)
         top.addWidget(self.overlay)
         top.addWidget(button("New population…", self.new_population))
-        self.root_layout.insertLayout(1, top)
+        experiment_bar = W.QWidget(objectName="experiment_bar")
+        experiment_bar.setLayout(top)
+        top.setContentsMargins(10, 8, 10, 8)
+        self.root_layout.insertWidget(1, experiment_bar)
         self.scope = label(
             f"Shared recipe · edits apply to all {len(records)} samples in this sheet. Colors identify groups.",
             "muted",
@@ -87,6 +90,7 @@ class ScreenWindow(GateWindow):
         self.focus_plot.toggled.connect(self.toggle_focus)
         scopes.addWidget(self.focus_plot)
         scopes.addStretch()
+        scopes.addWidget(button("Save & run experiment…", self.run_analysis, True))
         self.root_layout.insertLayout(3, scopes)
         display_panel = W.QWidget()
         display_layout = W.QVBoxLayout(display_panel)
@@ -150,11 +154,12 @@ class ScreenWindow(GateWindow):
         axes.addStretch()
         display_layout.addLayout(axes)
         self.main_layout.insertWidget(3, display_panel)
-        gallery_panel = W.QWidget()
+        gallery_panel = W.QWidget(objectName="gallery")
         self.gallery_panel = gallery_panel
         gallery_panel.setMinimumWidth(240)
         gallery_layout = W.QVBoxLayout(gallery_panel)
-        gallery_layout.setContentsMargins(0, 0, 0, 0)
+        gallery_layout.setContentsMargins(10, 12, 10, 8)
+        gallery_layout.addWidget(label("POPULATION OVERVIEW", "eyebrow"))
         self.gallery_mode = W.QComboBox()
         self.gallery_mode.addItems(["All populations", "Compare samples", "Plate map", "Ancestry"])
         self.gallery_mode.currentIndexChanged.connect(self.request_gallery)
@@ -532,6 +537,15 @@ class ScreenWindow(GateWindow):
                 + " Scroll to zoom. Scatter displays up to 20,000 events per sample; counts use all events."
             )
         self.help.setToolTip(self.help.text())
+        self.help.setText(
+            {
+                "range": "Drag either boundary or enter exact limits below.",
+                "polygon": "Drag vertices to reshape · shift-drag to move the gate.",
+                "rectangle": "Drag an edge or corner to resize the population.",
+                "ratio": "Signal ratio boundaries · choose GFP / Cy5… to adjust.",
+                "boolean": "Membership follows the defining populations.",
+            }.get(gate["kind"], self.help.text())
+        )
         self.review_badge.setToolTip(self.note.text())
         self.edit_button.setEnabled(not preview)
         self.bounds_widget.setEnabled(not preview)

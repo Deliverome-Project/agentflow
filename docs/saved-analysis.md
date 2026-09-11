@@ -46,9 +46,10 @@ explicit nonnegative cutoff; nonpositive/near-zero backgrounds should be exclude
 using a cutoff justified by controls. Signal ratios are instrument-dependent, not
 molecular abundance ratios. Reopen this action on a ratio population to edit it.
 The plot shows both ratio boundaries and the denominator cutoff. Child gates and
-batch summaries use the same FlowKit hierarchy. These Agentflow ratio gates are
-not currently exportable as Gating-ML; export fails explicitly rather than changing
-their meaning. Ordinary supported gates retain Gating-ML export.
+batch summaries use the same FlowKit hierarchy. Ratio gates export as standard Gating-ML ratio transformations, ratio dimensions
+and a denominator bound. The compensated definition and parent hierarchy survive
+export/import; other software must correctly implement the compensation reference
+on ratio dimensions. Agentflow corrects that behavior in its vendored FlowKit.
 
 ## Relationship to cytometry standards
 

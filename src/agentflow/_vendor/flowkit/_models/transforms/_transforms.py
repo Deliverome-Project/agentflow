@@ -2,6 +2,7 @@
 Basic Transform sub-classes
 """
 import flowutils
+import numpy as np
 from ._base_transform import Transform
 
 
@@ -47,7 +48,7 @@ class RatioTransform(Transform):
             f'a: {self.param_a}, b: {self.param_b}, c: {self.param_c})'
         )
 
-    def apply(self, sample):
+    def apply(self, sample, events=None):
         """
         Apply RatioTransform to given 'raw' events in a Sample.
 
@@ -58,16 +59,19 @@ class RatioTransform(Transform):
         subclasses take an events array as the argument to the apply method.
 
         :param sample: Sample instance from which event data should be extracted
+        :param events: Optional acquisition-ordered signal array after declared compensation
         :return: NumPy array of transformed events
         """
-        events = sample.get_events(source='raw')
+        if events is None:
+            events = sample.get_events(source='raw')
 
         dim_x_idx = sample.pnn_labels.index(self.dimensions[0])
         dim_y_idx = sample.pnn_labels.index(self.dimensions[1])
         dim_x = events[:, dim_x_idx]
         dim_y = events[:, dim_y_idx]
 
-        new_events = self.param_a * ((dim_x - self.param_b) / (dim_y - self.param_c))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            new_events = self.param_a * ((dim_x - self.param_b) / (dim_y - self.param_c))
 
         return new_events
 

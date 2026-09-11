@@ -30,3 +30,6 @@ assert (ASSETS / "PlayfairDisplay-OFL.txt").is_file()
 setup_plots()
 assert importlib.util.find_spec("PySide6") is None
 print("Offline fonts and headless installation passed.")
+
+assert (ASSETS.parent / "icons/chevron.svg").is_file()
+assert (ASSETS.parent / "icons/check.svg").is_file()

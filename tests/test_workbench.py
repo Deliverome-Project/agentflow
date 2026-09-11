@@ -534,6 +534,10 @@ def test_ratio_dialog_scatter_and_snapshot(window, tmp_path):
         dialog.reject()
 
     QtCore.QTimer.singleShot(20, accept_ratio)
+    QtCore.QTimer.singleShot(
+        2000,
+        lambda: W.QApplication.activeModalWidget().reject() if W.QApplication.activeModalWidget() else None,
+    )
     window.ratio_dialog()
     gate = window.state.gate("gfp_cy5_ratio")
     assert gate is not None
@@ -547,3 +551,29 @@ def test_ratio_dialog_scatter_and_snapshot(window, tmp_path):
     assert "fcs_keywords" in snapshot["inspected_sample"]["instrument"]
     W.QApplication.processEvents()
     window.grab().save("/private/tmp/agentflow-ratio-scatter.png")
+
+
+def test_launcher_opens_yaml_and_rejects_ambiguous_recipe(window, demo, tmp_path, monkeypatch):
+    import pandas as pd
+
+    from agentflow.launcher import Launcher
+    from agentflow.recipes import save_recipe
+
+    folder = tmp_path / "yaml-project"
+    folder.mkdir()
+    save_recipe(folder / "recipe.yaml", window.state.recipe)
+    pd.DataFrame(read_samples(demo / "workflow/samples.csv")).to_csv(folder / "samples.csv", index=False)
+    monkeypatch.setattr(W.QFileDialog, "getExistingDirectory", lambda *a: str(folder))
+    launcher = Launcher()
+    launcher.open_folder()
+    assert launcher.selection[0].name == "recipe.yaml"
+    save_recipe(folder / "recipe.json", window.state.recipe)
+    other = Launcher()
+    other.open_folder()
+    assert other.selection is None
+    assert "multiple recipes" in other.status.text()
+    launcher.show()
+    W.QApplication.processEvents()
+    launcher.grab().save("/private/tmp/agentflow-polished-launcher.png")
+    launcher.close()
+    other.close()

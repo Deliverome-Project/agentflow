@@ -831,7 +831,7 @@ class GatingStrategy(object):
         # compensate will cache events regardless of cache_events arg value
         # this is much more universally useful to speed up analysis as the
         # same comp matrix is nearly always used for all sample gates.
-        events = self._compensate_sample(dim_comp_refs, sample)
+        events = self._compensate_sample(dim_comp_refs, sample).copy()
 
         for i, dim in enumerate(dim_indices):
             if dim_xform[i] is not None:
@@ -889,13 +889,16 @@ class GatingStrategy(object):
             except KeyError:
                 raise KeyError("New dimensions must provide a transformation")
 
-            xform_events = new_dim_xform.apply(sample)
+            # Agentflow: ratio inputs use their declared compensation, before display transforms.
+            refs = set() if new_dim.compensation_ref in (None, 'uncompensated') else {new_dim.compensation_ref}
+            ratio_events = self._compensate_sample(refs, sample)
+            xform_events = new_dim_xform.apply(sample, events=ratio_events)
 
             if new_dim.transformation_ref is not None:
                 xform = self.transformations[new_dim.transformation_ref]
                 xform_events = xform.apply(xform_events)
 
-            new_dims_events.append(xform_events)
+            new_dims_events.append(xform_events.reshape(-1, 1))
 
         return np.hstack(new_dims_events)
 

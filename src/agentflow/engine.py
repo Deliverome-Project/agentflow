@@ -100,9 +100,9 @@ def build_strategy(recipe, matrix=None):
                 )
             )
         if gate["kind"] == "ratio":
-            from .ratio import SignalRatioGate
+            from .ratio import compile_ratio
 
-            operation = SignalRatioGate(gate["name"], dims, gate["bounds"], gate["denominator_min"])
+            operation = compile_ratio(strategy, gate, matrix)
         elif gate["kind"] == "boolean":
             operation = fk.gates.BooleanGate(
                 gate["name"],
