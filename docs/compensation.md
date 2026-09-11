@@ -13,7 +13,8 @@ spill[source, target] = (median(target_positive) - median(target_negative))
 ```
 
 Both sets are selected using explicit raw source-detector thresholds. This needs
-matching autofluorescence backgrounds/particle types. Saturated source positives,
+matching autofluorescence backgrounds/particle types. Saturated positive or negative
+events in any included detector (source or receiving),
 too-small populations, invalid labels and ill-conditioned matrices fail. Controls
 need sufficient brightness; these checks cannot establish experimental suitability.
 This is not Cytoflow's through-origin regression or FlowJo's AutoSpill algorithm.
@@ -34,11 +35,24 @@ Threshold values above are placeholders, not recommended universal settings.
 Paths resolve relative to this config. For debris/singlet cleanup, add
 `cleanup_recipe` and `cleanup_gate`; that recipe must use compensation `none`.
 The estimator uses all events passing cleanup. The before/after diagnostic plots
-show the full control (at most roughly 5000 points via deterministic stride),
-so the effects of cleanup can be inspected separately. Check threshold placement
+show that same population (at most 5000 points via deterministic stride), using
+the cleanup recipe embedded in the estimate and the native FlowKit matrix path.
+Check threshold placement
 and off-diagonal residual distributions; a coefficient heatmap alone is not QC.
 The estimate records control hashes, selection thresholds, median signals,
 population counts, config and cleanup fingerprints; it remains `reviewed: false`.
+
+Here, raw means uncompensated signal after FlowKit/FlowIO's acquisition gain and
+amplification preprocessing. Saturation limits are converted to those same units;
+they are not compared directly with unscaled FCS range values. No display transform
+or clipping of negative compensated values is part of compensation.
+
+New estimates record detector gain, range, amplification and reported voltages,
+plus the reported instrument. Contradictory settings across controls or between
+controls and an analysis sample fail. Missing reference metadata remains unknown;
+matching reported fields does not establish that unreported settings, particles,
+or instrument performance are suitable. Older and imported matrices without this
+metadata retain label/matrix validation but cannot get this acquisition comparison.
 
 FlowJo's own guidance also emphasizes control assignment, cleanup and
 positive/negative gate review, and adequate control brightness:
@@ -59,3 +73,6 @@ Edits to control inputs invalidate the previous calculation. Python callers can 
 paths; `resolve_config(config, base_directory)` converts a file-relative config first.
 Separate unstained negative files, regression/AutoSpill and suitability assessment
 against representative lab controls remain outstanding.
+
+See [compensation audit](compensation-audit.md) for code comparisons, regression
+coverage and remaining limitations.
