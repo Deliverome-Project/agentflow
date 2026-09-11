@@ -7,9 +7,9 @@ BERRY = "#922038"
 CORAL = "#e2655e"
 INK = "#1f1718"
 MUTED = "#6f5d5a"
-BG = "#fbfaf8"
-LINE = "#e8e1dc"
-SOFT = "#f8eeed"
+BG = "#ffffff"
+LINE = "#e7e7ea"
+SOFT = "#fcf7f8"
 
 
 def setup_plots():
@@ -75,9 +75,9 @@ def desktop_style():
                      selection-background-color: {SOFT}; selection-color: {BERRY}; }}
     QHeaderView::section {{ background: {SOFT}; border: none; padding: 7px; color: {BERRY}; }}
     QToolBar {{ background: {BG}; border: none; }}
-    QWidget#sidebar {{ background: #f3ece5; border-radius: 12px; }}
+    QWidget#sidebar {{ background: #fafafb; border-radius: 12px; }}
     QWidget#experiment_bar {{ background: white; border: 1px solid {LINE}; border-radius: 10px; }}
-    QWidget#gallery {{ background: #f5f1ed; border-radius: 12px; }}
+    QWidget#gallery {{ background: #ffffff; border-radius: 12px; }}
     QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; border: none; }}
     QComboBox::drop-down {{ border: none; width: 23px; }}
     QComboBox::down-arrow {{ image: url("{icons / "chevron.svg"}"); width: 12px; height: 12px; }}

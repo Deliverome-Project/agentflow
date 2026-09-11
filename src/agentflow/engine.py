@@ -154,8 +154,20 @@ def summarize(prepared, recipe, masks):
             "percent_total": 100 * mask.sum() / len(mask) if len(mask) else None,
         }
         for channel in recipe["transforms"]:
-            row[f"median_signal:{channel}"] = (
-                float(prepared.values.loc[mask, channel].median()) if mask.any() else None
-            )
+            values = prepared.values.loc[mask, channel].to_numpy()
+            finite = values[np.isfinite(values)]
+            row[f"finite_signal_count:{channel}"] = len(finite)
+            for name, function in {
+                "median": np.median,
+                "mean": np.mean,
+                "min": np.min,
+                "max": np.max,
+                "p05": lambda x: np.quantile(x, 0.05),
+                "p25": lambda x: np.quantile(x, 0.25),
+                "p75": lambda x: np.quantile(x, 0.75),
+                "p95": lambda x: np.quantile(x, 0.95),
+            }.items():
+                row[f"{name}_signal:{channel}"] = float(function(finite)) if len(finite) else None
+            row[f"sd_signal:{channel}"] = float(np.std(finite, ddof=1)) if len(finite) > 1 else None
         rows.append(row)
     return pd.DataFrame(rows)

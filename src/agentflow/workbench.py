@@ -36,6 +36,9 @@ class ScreenWindow(GateWindow):
         analysis_menu.addAction("Save and keep editing", lambda: self.save_changes(close=False))
         analysis_menu.addAction("Save and run all samples…", self.run_analysis)
         analysis_menu.addSeparator()
+        analysis_menu.addAction("Delete selected population…", self.delete_population)
+        self.gates.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.gates.customContextMenuRequested.connect(self.population_menu)
         analysis_menu.addAction("Detectors…", self.detectors_dialog)
         analysis_menu.addAction("Calculate compensation…", self.compensation_wizard)
         analysis_menu.addAction("Pinned controls…", self.pin_dialog)
@@ -68,7 +71,7 @@ class ScreenWindow(GateWindow):
         self.overlay = W.QCheckBox("Overlay samples")
         self.overlay.toggled.connect(self.redraw)
         top.addWidget(self.overlay)
-        top.addWidget(button("New population…", self.new_population))
+        top.addWidget(button("New subpopulation…", self.new_population))
         experiment_bar = W.QWidget(objectName="experiment_bar")
         experiment_bar.setLayout(top)
         top.setContentsMargins(10, 8, 10, 8)
@@ -97,12 +100,13 @@ class ScreenWindow(GateWindow):
         display_layout.setContentsMargins(0, 0, 0, 0)
         display_panel.hide()
         self.display_panel = display_panel
-        display_toggle = W.QCheckBox("Plot appearance && axes")
+        display_toggle = W.QCheckBox("Plot settings")
         display_toggle.toggled.connect(display_panel.setVisible)
         plot_actions = W.QHBoxLayout()
         plot_actions.addWidget(display_toggle)
         plot_actions.addStretch()
-        self.polygon_button = button("Draw polygon…", lambda: self.new_population("polygon"))
+        self.polygon_button = button("Polygon…", lambda: self.new_population("polygon"))
+        plot_actions.addWidget(button("Scatterplot…", self.scatter_dialog))
         plot_actions.addWidget(self.polygon_button)
         ratio_button = button("GFP / Cy5…", self.ratio_dialog)
         ratio_button.setToolTip("Plot reporter signals and select a numerator / denominator ratio")
@@ -170,21 +174,27 @@ class ScreenWindow(GateWindow):
         gallery_layout.addWidget(self.plate_metric)
         self.plate_metric.hide()
         paging = W.QHBoxLayout()
-        paging.addWidget(label("Page", "muted"))
+        paging.addWidget(button("‹", lambda: self.gallery_page.setValue(self.gallery_page.value() - 1)))
         self.gallery_page = W.QSpinBox()
         self.gallery_page.setMinimum(1)
         self.gallery_page.valueChanged.connect(self.request_gallery)
+        self.gallery_page.hide()
         paging.addWidget(self.gallery_page)
+        paging.addWidget(button("›", lambda: self.gallery_page.setValue(self.gallery_page.value() + 1)))
+        self.gallery_range = label("", "muted")
+        self.gallery_range.setWordWrap(True)
+        paging.insertWidget(0, self.gallery_range, 1)
         paging.addStretch()
         gallery_layout.addLayout(paging)
-        gallery_layout.addWidget(label("Click a plot to select it", "muted"))
+        self.gallery_mode.setToolTip(
+            "Click a plot to select its population or sample. Use arrows for more plots."
+        )
         self.gallery_figure = Figure(figsize=(5, 8), facecolor="white")
         self.gallery_canvas = FigureCanvasQTAgg(self.gallery_figure)
-        self.gallery_canvas.setMinimumHeight(600)
-        scroll = W.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(self.gallery_canvas)
-        gallery_layout.addWidget(scroll, 1)
+        self.gallery_canvas.installEventFilter(self)
+        self.gallery_canvas.setMinimumHeight(120)
+        self.gallery_canvas.setSizePolicy(W.QSizePolicy.Expanding, W.QSizePolicy.Ignored)
+        gallery_layout.addWidget(self.gallery_canvas, 1)
         self.gallery_axes = {}
         self.gallery_canvas.mpl_connect("button_press_event", self.select_gallery)
         self.body_layout.removeWidget(self.main_scroll)
@@ -272,12 +282,17 @@ class ScreenWindow(GateWindow):
         super().resizeEvent(event)
         if getattr(self, "ready", False):
             compact = self.height() < 800
-            self.stack.setMinimumHeight(300 if compact else 380)
-            self.canvas.setMinimumHeight(200 if compact else 260)
-            self.main_layout.setSpacing(6 if compact else 10)
+            self.stack.setMinimumHeight(180 if compact else 280)
+            self.canvas.setMinimumHeight(90 if compact else 180)
+            self.main_layout.setSpacing(4 if compact else 6)
             self.note.setVisible(not compact)
             self.scope.setVisible(not compact)
             self.request_gallery()
+
+    def eventFilter(self, watched, event):
+        if watched is getattr(self, "gallery_canvas", None) and event.type() == QtCore.QEvent.Resize:
+            self.request_gallery()
+        return super().eventFilter(watched, event)
 
     def toggle_focus(self, checked):
         if not self.ready:
@@ -603,14 +618,16 @@ class ScreenWindow(GateWindow):
         items = self.selected_records() if compare else self.state.active_recipe["gates"]
         if self.gallery_mode.currentText() == "Ancestry":
             items = self.ancestry()
-        self.gallery_page.setMaximum(max(1, (len(items) + 11) // 12))
-        start = (self.gallery_page.value() - 1) * 12
+        columns = 1 if self.gallery_canvas.width() < 330 else 2
+        available_rows = max(2, self.gallery_canvas.height() // 145)
+        capacity = min(12, columns * available_rows)
+        self.gallery_page.setMaximum(max(1, (len(items) + capacity - 1) // capacity))
+        start = (self.gallery_page.value() - 1) * capacity
         all_items = items
-        items = items[start : start + 12]
+        items = items[start : start + capacity]
         n = len(items)
-        columns = 1 if self.gallery_canvas.width() < 420 else 2
         rows = max(1, (n + columns - 1) // columns)
-        self.gallery_canvas.setMinimumHeight(rows * 260)
+        self.gallery_range.setText(f"{start + 1 if n else 0}–{start + n} of {len(all_items)} plots")
         shared_limits = None
         active = self.state.gate(self.active_name)
         if compare and active:
@@ -646,7 +663,7 @@ class ScreenWindow(GateWindow):
                 title = record["sample_id"] if compare else TITLES.get(gate["name"], gate["name"])
                 ax.set_title(
                     f"{title}\n{count:,} / {total:,}",
-                    fontsize=9,
+                    fontsize=8,
                     color="#922038" if gate["name"] == self.active_name else "#141414",
                 )
                 if shared_limits:
@@ -655,12 +672,12 @@ class ScreenWindow(GateWindow):
                         margin = max((hi - lo) * 0.05, 0.01)
                         setter(lo - margin, hi + margin)
                 apply_axes(ax, gate["channels"], self.state.recipe, ["recipe", "recipe"])
-                ax.tick_params(labelsize=7)
-                ax.xaxis.label.set_size(8)
-                ax.yaxis.label.set_size(8)
+                ax.tick_params(labelsize=6, pad=2)
+                ax.xaxis.label.set_size(7)
+                ax.yaxis.label.set_size(7)
             except (ValueError, OSError, KeyError) as error:
                 ax.text(0.05, 0.5, str(error), transform=ax.transAxes, wrap=True, fontsize=8)
-        self.gallery_figure.tight_layout(pad=1.6)
+        self.gallery_figure.tight_layout(pad=0.8, h_pad=1.2, w_pad=0.8)
         self.gallery_canvas.draw_idle()
 
     def draw_plates(self):
@@ -725,7 +742,7 @@ class ScreenWindow(GateWindow):
             image, ax=ax, orientation="horizontal", pad=0.12, label=self.plate_metric.currentText()
         )
         self.gallery_axes[ax] = ("plate", positions)
-        self.gallery_canvas.setMinimumHeight(500)
+        self.gallery_range.setText(f"Plate {self.gallery_page.value()} of {len(plates)}")
         self.gallery_figure.tight_layout()
         self.gallery_canvas.draw_idle()
 
@@ -946,7 +963,6 @@ class ScreenWindow(GateWindow):
                 self.state.apply(candidate)
                 self.rebuild(gate["name"])
                 self.plot_type.setCurrentText("Scatter")
-                self.focus_plot.setChecked(True)
                 dialog.accept()
             except (ValueError, KeyError, TypeError) as error:
                 note.setText(str(error))
@@ -955,7 +971,49 @@ class ScreenWindow(GateWindow):
         form.addRow(button("Cancel", dialog.reject))
         dialog.exec()
 
-    def new_population(self, preferred_kind=None):
+    def population_menu(self, position):
+        item = self.gates.itemAt(position)
+        if item is None:
+            return
+        self.gates.setCurrentItem(item)
+        if self.active_name != item.data(0, QtCore.Qt.UserRole):
+            return
+        menu = W.QMenu(self)
+        menu.addAction("New subpopulation…", self.new_population)
+        menu.addAction("Delete population…", self.delete_population)
+        menu.exec(self.gates.viewport().mapToGlobal(position))
+
+    def delete_population(self):
+        try:
+            self.flush_bounds()
+            affected = self.state.deletion_set(self.active_name)
+            parent = self.state.gate(self.active_name)["parent"]
+            message = W.QMessageBox(self)
+            message.setWindowTitle("Delete population")
+            message.setText(f"Remove {len(affected)} population(s) from all samples?")
+            message.setInformativeText(
+                "This includes child and dependent populations:\n"
+                + ", ".join(affected)
+                + "\n\nYou can Undo this change. It is written to the recipe when you save."
+            )
+            message.setStandardButtons(W.QMessageBox.Cancel | W.QMessageBox.Yes)
+            message.button(W.QMessageBox.Yes).setText("Delete populations")
+            message.setDefaultButton(W.QMessageBox.Cancel)
+            if message.exec() != W.QMessageBox.Yes:
+                return
+            self.state.delete_population(self.active_name)
+            self.rebuild(parent)
+            self.message.setText(f"Removed {len(affected)} population(s). Undo restores them.")
+        except (ValueError, KeyError) as error:
+            self.message.setText(str(error))
+
+    def scatter_dialog(self):
+        from .scatter_viewer import ScatterDialog
+
+        self.flush_bounds()
+        ScatterDialog(self).exec()
+
+    def new_population(self, preferred_kind=None, preferred_channels=None, parent_name=None):
         active = self.state.gate(self.active_name)
         if active is None:
             return
@@ -977,6 +1035,9 @@ class ScreenWindow(GateWindow):
         y.setCurrentText(active["channels"][-1])
         if x.currentText() == y.currentText() and y.count() > 1:
             y.setCurrentIndex((x.currentIndex() + 1) % y.count())
+        if preferred_channels:
+            x.setCurrentText(preferred_channels[0])
+            y.setCurrentText(preferred_channels[1])
         parent.addItems(["root"] + [g["name"] for g in self.state.recipe["gates"]])
         relationship = W.QComboBox()
         relationship.setObjectName("population_relationship")
@@ -992,6 +1053,9 @@ class ScreenWindow(GateWindow):
                 parent.setCurrentText(active["name"] if index == 0 else active["parent"])
 
         relationship.currentIndexChanged.connect(choose_relationship)
+        if parent_name is not None:
+            relationship.setCurrentIndex(2)
+            parent.setCurrentText(parent_name)
         form.addRow("Create as", relationship)
         kind.addItems(["rectangle", "polygon", "range", "boolean"])
         for title, field in [

@@ -47,6 +47,39 @@ def button(text, callback, primary=False):
     return result
 
 
+class ActivePageStack(W.QWidget):
+    """Only the visible page participates in layout sizing."""
+
+    def __init__(self):
+        super().__init__()
+        self.pages = []
+        self.index = -1
+        layout = W.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+    def addWidget(self, page):
+        page.setParent(self)
+        page.hide()
+        self.pages.append(page)
+        if self.index < 0:
+            self.setCurrentIndex(0)
+
+    def currentIndex(self):
+        return self.index
+
+    def setCurrentIndex(self, index):
+        if self.index == index:
+            return
+        if self.index >= 0:
+            old = self.pages[self.index]
+            self.layout().removeWidget(old)
+            old.hide()
+        self.index = index
+        self.layout().addWidget(self.pages[index])
+        self.pages[index].show()
+        self.updateGeometry()
+
+
 class GateWindow(W.QMainWindow):
     def __init__(self, prepared, recipe, name, path):
         super().__init__()
@@ -80,9 +113,9 @@ class GateWindow(W.QMainWindow):
         layout.addLayout(body, 1)
         sidebar = W.QVBoxLayout()
         side = W.QWidget(objectName="sidebar")
-        side.setFixedWidth(210)
+        side.setFixedWidth(185)
         side.setLayout(sidebar)
-        sidebar.setContentsMargins(12, 16, 12, 12)
+        sidebar.setContentsMargins(9, 12, 9, 9)
         sidebar.addWidget(label("POPULATIONS", "eyebrow"))
         self.progress = label("", "muted")
         sidebar.addWidget(self.progress)
@@ -106,7 +139,8 @@ class GateWindow(W.QMainWindow):
             sidebar.addWidget(button("Set up compensation…", self.compensation_wizard))
         body.addWidget(side)
         main = W.QVBoxLayout()
-        main.setSpacing(10)
+        main.setSpacing(6)
+        main.setContentsMargins(0, 0, 0, 0)
         self.main_layout = main
         main_widget = W.QWidget(objectName="analysis_panel")
         main_widget.setLayout(main)
@@ -115,14 +149,21 @@ class GateWindow(W.QMainWindow):
         main_scroll.setFrameShape(W.QFrame.NoFrame)
         main_scroll.setWidget(main_widget)
         main_scroll.setMinimumWidth(360)
-        self.main_scroll = main_scroll
-        body.addWidget(main_scroll, 1)
+        self.plot_scroll = main_scroll
+        main_host = W.QWidget()
+        self.main_host_layout = W.QVBoxLayout(main_host)
+        self.main_host_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_host_layout.setSpacing(6)
+        self.main_host_layout.addWidget(main_scroll, 1)
+        self.main_scroll = main_host
+        main_host.setMinimumWidth(360)
+        body.addWidget(main_host, 1)
         self.title = label("", "title")
         self.subtitle = label("", "muted")
         self.subtitle.setWordWrap(True)
         main.addWidget(self.title)
         main.addWidget(self.subtitle)
-        self.stack = W.QStackedWidget()
+        self.stack = ActivePageStack()
         self.stack.setMinimumHeight(380)
         self.stack.setSizePolicy(W.QSizePolicy.Expanding, W.QSizePolicy.Ignored)
         main.addWidget(self.stack, 1)
@@ -205,7 +246,10 @@ class GateWindow(W.QMainWindow):
         stats.addStretch()
         self.review_button = button("Mark reviewed →", self.review_next)
         stats.addWidget(self.review_button)
-        main.addLayout(stats)
+        self.stats_panel = W.QWidget()
+        self.stats_panel.setLayout(stats)
+        stats.setContentsMargins(4, 4, 4, 4)
+        self.main_host_layout.addWidget(self.stats_panel)
         self.note = label("", "muted")
         self.note.setWordWrap(True)
         main.addWidget(self.note)
@@ -435,7 +479,7 @@ class GateWindow(W.QMainWindow):
             exception = name in self.state.recipe.get("sample_overrides", {}).get(self.state.sample_id, {})
             ownership = "Exception" if exception else "Shared"
             detail = f"{suffix}{count}"
-            if gate:
+            if gate and exception:
                 detail += f" · {ownership}"
             tooltip = f"{name} · {detail}"
             if gate:

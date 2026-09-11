@@ -36,19 +36,44 @@ def window(demo, tmp_path):
     app.processEvents()
 
 
+def gallery_items(window):
+    items = []
+    window.update_gallery()
+    for page in range(1, window.gallery_page.maximum() + 1):
+        window.gallery_page.setValue(page)
+        window.update_gallery()
+        items.extend(window.gallery_axes.items())
+    return items
+
+
+def find_gallery(window, target):
+    window.update_gallery()
+    for page in range(1, window.gallery_page.maximum() + 1):
+        window.gallery_page.setValue(page)
+        window.update_gallery()
+        for ax, value in window.gallery_axes.items():
+            if value == target:
+                return ax
+    raise AssertionError(f"Missing plot: {target}")
+
+
 def test_gallery_detector_labels_selection_and_sample_comparison(window):
-    assert len(window.gallery_axes) == 6
+    assert len(gallery_items(window)) == 6
     assert all(ax.get_xlabel() for ax in window.gallery_axes)
-    ax = next(ax for ax, value in window.gallery_axes.items() if value == ("gate", "gfp"))
+    ax = find_gallery(window, ("gate", "gfp"))
     window.select_gallery(SimpleNamespace(inaxes=ax))
     assert window.active_name == "gfp"
     window.gallery_mode.setCurrentIndex(1)
     W.QApplication.processEvents()
-    assert len(window.gallery_axes) == 3
-    ax = next(ax for ax, value in window.gallery_axes.items() if value == ("sample", "DUMMY-3"))
+    assert len(gallery_items(window)) == 3
+    ax = find_gallery(window, ("sample", "DUMMY-3"))
     window.select_gallery(SimpleNamespace(inaxes=ax))
     assert window.record["sample_id"] == "DUMMY-3"
-    limits = [ax.get_xlim() for ax in window.gallery_axes]
+    limits = []
+    for page in range(1, window.gallery_page.maximum() + 1):
+        window.gallery_page.setValue(page)
+        window.update_gallery()
+        limits.extend(ax.get_xlim() for ax in window.gallery_axes)
     assert all(lim == limits[0] for lim in limits)
 
 
@@ -68,6 +93,8 @@ def test_histogram_drag_keeps_threshold_and_zoom(window):
     from agentflow.engine import load_recipe
     from agentflow.threshold import ThresholdSelector
 
+    window.range_mode.setCurrentIndex(1)  # Explicitly test the optional one-sided mode.
+    window.apply_bounds()
     window.canvas.draw()
     xlim, ylim = window.ax.get_xlim(), window.ax.get_ylim()
     for fraction in (0.35, 0.65, 0.45):
@@ -195,7 +222,7 @@ def test_sample_exception_shared_counts_save_and_undo(window):
 def test_pinned_reference_survives_group_filter(window):
     window.pinned = {"DUMMY-1"}
     window.sample_choice.setCurrentIndex(2)
-    window.group_choice.setCurrentText("High expression")
+    window.group_choice.setCurrentText("High positive fraction")
     assert [r["sample_id"] for r in window.plot_records()] == ["DUMMY-1", "DUMMY-3"]
     assert any("Pinned · DUMMY-1" in t.get_text() for t in window.ax.get_legend().texts)
     window.save()
@@ -236,7 +263,7 @@ def test_population_tree_ancestry_and_parent_navigation(window):
     window.gates.setCurrentRow(window.names.index("gfp"))
     window.gallery_mode.setCurrentText("Ancestry")
     W.QApplication.processEvents()
-    assert [value[1] for value in window.gallery_axes.values()] == ["cells", "singlets", "live", "gfp"]
+    assert [value[1] for _, value in gallery_items(window)] == ["cells", "singlets", "live", "gfp"]
     nodes["cells"].setExpanded(False)
     window.select_parent()
     assert window.active_name == "live"
@@ -252,7 +279,7 @@ def test_sample_steps_respect_filters_and_flush_edits(window):
     assert "DUMMY-1" in window.state.recipe["sample_overrides"]
     window.step_sample(-1)
     assert float(window.upper.text()) == pytest.approx(2000)
-    window.group_choice.setCurrentText("High expression")
+    window.group_choice.setCurrentText("High positive fraction")
     window.step_sample(1)
     assert window.record["sample_id"] == "DUMMY-3"
     assert not window.next_sample.isEnabled()
@@ -287,7 +314,7 @@ def test_focus_plot_enlarges_canvas_and_saves_view(window):
     window.focus_plot.setChecked(False)
     W.QApplication.processEvents()
     assert not window.gallery_panel.isHidden()
-    assert len(window.gallery_axes) == 3
+    assert len(gallery_items(window)) == 3
     window.save()
     saved = json.loads(window.state.path.read_text())
     assert saved["display"]["gallery_mode"] == "Ancestry"
@@ -300,7 +327,7 @@ def test_small_window_keeps_plot_and_labels_separate(window):
     window.gallery_mode.setCurrentText("Ancestry")
     QTest.qWait(100)
     W.QApplication.processEvents()
-    assert window.canvas.height() >= 260
+    assert window.canvas.height() >= 180
     assert window.canvas.geometry().bottom() < window.help.geometry().top()
     assert all(ax.get_subplotspec().get_gridspec().ncols == 1 for ax in window.gallery_axes)
     assert not window.parent_button.isHidden()
@@ -577,3 +604,146 @@ def test_launcher_opens_yaml_and_rejects_ambiguous_recipe(window, demo, tmp_path
     launcher.grab().save("/private/tmp/agentflow-polished-launcher.png")
     launcher.close()
     other.close()
+
+
+@pytest.mark.parametrize("size", [(980, 620), (1280, 720), (1440, 900)])
+def test_counts_and_gallery_fit_without_scrolling(window, size):
+    window.resize(*size)
+    window.show_gate("live")
+    W.QApplication.processEvents()
+    window.update_gallery()
+    W.QApplication.processEvents()
+    from PySide6.QtTest import QTest
+
+    QTest.qWait(150)
+    assert (window.width(), window.height()) == size
+    assert window.plot_scroll.verticalScrollBar().maximum() == 0, [
+        (x.__class__.__name__, x.height(), x.minimumSizeHint().height())
+        for x in (
+            window.plot_scroll,
+            window.title,
+            window.subtitle,
+            window.stack,
+            window.canvas,
+            window.bounds_widget,
+        )
+    ]
+    for widget in (window.count, window.percent, window.review_button, window.gallery_canvas):
+        top = widget.mapTo(window, QtCore.QPoint(0, 0))
+        assert top.y() >= 0
+        assert top.y() + widget.height() < window.height()
+    assert window.gallery_canvas.height() <= window.gallery_panel.height()
+    assert len(window.gallery_axes) >= 2
+    window.gallery_canvas.draw()
+    renderer = window.gallery_canvas.get_renderer()
+    for ax in window.gallery_axes:
+        extent = ax.get_tightbbox(renderer)
+        assert extent.y0 >= -1
+        assert extent.y1 <= window.gallery_canvas.height() + 1
+    window.grab().save(f"/private/tmp/agentflow-layout-{size[0]}x{size[1]}.png")
+
+
+def test_dummy_histograms_open_between_and_scatter_exploration_is_read_only(window):
+    from agentflow.scatter_viewer import ScatterDialog
+
+    assert window.range_mode.currentText() == "Between bounds"
+    for gate in window.state.recipe["gates"]:
+        if gate["kind"] == "range":
+            assert all(value is not None for value in gate["bounds"])
+    before = copy.deepcopy(window.state.recipe)
+    dialog = ScatterDialog(window)
+    dialog.population.setCurrentText("live")
+    dialog.x.setCurrentText("BL1-A")
+    dialog.y.setCurrentText("RL1-A")
+    dialog.style.setCurrentText("Density")
+    assert dialog.ax.get_xlabel() == "BL1-A · asinh"
+    assert dialog.ax.get_ylabel() == "RL1-A · asinh"
+    assert f"{window.state.counts()['live']:,}" in dialog.count.text()
+    assert window.state.recipe == before
+
+    def fill():
+        active = W.QApplication.activeModalWidget()
+        assert active.findChild(W.QComboBox, "parent_population").currentText() == "live"
+        assert active.findChild(W.QComboBox, "x_detector").currentText() == "BL1-A"
+        assert active.findChild(W.QComboBox, "y_detector").currentText() == "RL1-A"
+        active.findChild(W.QLineEdit, "population_name").setText("reporter_subset")
+        next(b for b in active.findChildren(W.QPushButton) if b.text() == "Add draft population").click()
+
+    QtCore.QTimer.singleShot(0, fill)
+    dialog.create_population()
+    assert window.state.gate("reporter_subset")["parent"] == "live"
+    assert window.state.gate("reporter_subset")["channels"] == ["BL1-A", "RL1-A"]
+    dialog.close()
+
+
+@pytest.mark.parametrize("size,minimum", [((980, 620), 2), ((1280, 720), 3), ((1440, 900), 3)])
+def test_compact_sample_comparison_shows_multiple_plots(window, size, minimum):
+    window.resize(*size)
+    window.gallery_mode.setCurrentText("Compare samples")
+    W.QApplication.processEvents()
+    window.update_gallery()
+    W.QApplication.processEvents()
+    assert len(window.gallery_axes) >= minimum
+    assert window.plot_scroll.verticalScrollBar().maximum() == 0
+    window.gallery_canvas.draw()
+    renderer = window.gallery_canvas.get_renderer()
+    for ax in window.gallery_axes:
+        extent = ax.get_tightbbox(renderer)
+        assert extent.x0 >= -1
+        assert extent.x1 <= window.gallery_canvas.width() + 1
+        assert extent.y0 >= -1
+        assert extent.y1 <= window.gallery_canvas.height() + 1
+    window.grab().save(f"/private/tmp/agentflow-compare-{size[0]}x{size[1]}.png")
+
+
+def test_delete_population_cascade_cancel_undo_and_save(window, monkeypatch):
+    from agentflow.engine import load_recipe
+
+    candidate = copy.deepcopy(window.state.recipe)
+    candidate["gates"].extend(
+        [
+            {
+                "name": "gfp_child",
+                "parent": "gfp",
+                "kind": "range",
+                "channels": ["BL1-A"],
+                "bounds": [5, 7],
+                "reviewed": False,
+            },
+            {
+                "name": "double",
+                "parent": "live",
+                "kind": "boolean",
+                "channels": ["BL1-A", "RL1-A"],
+                "references": ["gfp", "cy5"],
+                "operation": "and",
+                "reviewed": False,
+            },
+        ]
+    )
+    candidate["sample_overrides"] = {"DUMMY-2": {"gfp": {"reviewed": True}, "cy5": {"reviewed": True}}}
+    window.state.apply(candidate)
+    window.rebuild("gfp")
+    before = copy.deepcopy(window.state.recipe)
+    monkeypatch.setattr(W.QMessageBox, "exec", lambda self: W.QMessageBox.Cancel)
+    window.delete_population()
+    assert window.state.recipe == before
+    monkeypatch.setattr(W.QMessageBox, "exec", lambda self: W.QMessageBox.Yes)
+    assert window.state.deletion_set("gfp") == ["gfp", "gfp_child", "double"]
+    window.delete_population()
+    assert window.active_name == "live"
+    assert all(window.state.gate(n) is None for n in ["gfp", "gfp_child", "double"])
+    assert window.state.recipe["sample_overrides"]["DUMMY-2"] == {"cy5": {"reviewed": True}}
+    assert window.state.counts()["cy5"] > 0
+    window.travel(False)
+    assert window.state.recipe == before
+    window.travel(True)
+    assert window.state.gate("gfp") is None
+    window.save_changes(close=False)
+    assert all(g["name"] != "gfp" for g in load_recipe(window.state.path)["gates"])
+    window.state.sample_scope = True
+    with pytest.raises(ValueError, match="All samples"):
+        window.state.delete_population("cy5")
+    window.state.sample_scope = False
+    with pytest.raises(ValueError, match="at least one"):
+        window.state.delete_population("cells")

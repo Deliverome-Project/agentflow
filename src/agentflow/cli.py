@@ -27,6 +27,12 @@ def parser():
     init.add_argument("--matrix", help="Explicit matrix JSON/CSV/TSV overrides embedded compensation")
     for role in ("live", "gfp", "mscarlet", "cy5"):
         init.add_argument("--" + role, help="Acquired detector to assign explicitly")
+    sheet = commands.add_parser(
+        "sample-sheet", help="Draft a sample sheet from FCS files and optional agent annotations"
+    )
+    sheet.add_argument("folder")
+    sheet.add_argument("--annotations", help="YAML/JSON sample annotations, optionally sourced from Notion")
+    sheet.add_argument("--out", required=True)
     edit = commands.add_parser("edit", help="Open the full gate workflow or a named gate")
     edit.add_argument("sample", nargs="?", help="One FCS file; use --samples for a screen")
     edit.add_argument("--samples", help="Sample sheet CSV with group/color and optional compensation_path")
@@ -144,6 +150,11 @@ def main(argv=None):
             return run_launcher()
         elif args.command == "inspect":
             print(json.dumps(inspect_sample(args.sample), indent=2))
+        elif args.command == "sample-sheet":
+            from .sample_sheet import draft_sample_sheet
+
+            rows = draft_sample_sheet(args.folder, args.out, args.annotations)
+            print(json.dumps({"status": "draft", "samples": len(rows), "output": args.out}))
         elif args.command == "init":
             scaffold(
                 args.sample,

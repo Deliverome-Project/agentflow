@@ -1,6 +1,7 @@
 import copy
 import json
 
+import numpy as np
 import pytest
 
 from agentflow.control_review import export_control_review, resolve_config
@@ -79,6 +80,20 @@ def test_batch_records_exception_and_uses_same_masks(demo, tmp_path):
     summary = pd.read_csv(out / "summary.csv")
     row = summary[(summary.sample_id == "DUMMY-1") & (summary.gate == "live")].iloc[0]
     assert row["count"] < 100
+    from agentflow import flowkit
+    from agentflow.engine import evaluate, prepare
+    from agentflow.samples import read_samples, sample_recipe
+
+    records = read_samples(demo / "workflow/samples.csv")
+    for index, record in enumerate(records, 1):
+        effective = sample_recipe(recipe, record)
+        prepared = prepare(record["fcs_path"], effective)
+        restored = flowkit.parse_gating_xml(str(out / f"gates-{index:04d}.gatingml.xml"))
+        result = restored.gate_sample(prepared.sample)
+        for name, expected in evaluate(prepared, effective).items():
+            if name != "root":
+                np.testing.assert_array_equal(result.get_gate_membership(name), expected)
+
     assert (
         json.loads((out / "run.json").read_text())["inputs"][0]["gate_overrides"]
         == recipe["sample_overrides"]["DUMMY-1"]
