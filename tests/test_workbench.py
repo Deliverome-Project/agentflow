@@ -863,7 +863,7 @@ def test_comparison_last_page_keeps_fixed_two_by_two_cells(window, total):
         assert ax.get_subplotspec().get_gridspec().get_geometry() == (2, 2)
 
 
-def test_compensation_logicle_preserves_raw_threshold_selection(window, demo):
+def test_compensation_logicle_preserves_raw_threshold_selection(window, demo, tmp_path):
     from agentflow import flowkit
     from agentflow.compensation_wizard import CompensationWizard
     from agentflow.control_review import resolve_config
@@ -889,5 +889,5 @@ def test_compensation_logicle_preserves_raw_threshold_selection(window, demo):
     raw = sample.get_channel_events(detector, source="raw")
     assert f"Negative: {np.count_nonzero(raw <= 250):,}" in wizard.status.text()
     wizard.canvas.draw()
-    wizard.figure.savefig("/private/tmp/agentflow-v071-compensation.png")
+    wizard.figure.savefig(tmp_path / "compensation.png")
     wizard.reject()
