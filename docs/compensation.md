@@ -17,8 +17,6 @@ matching autofluorescence backgrounds/particle types. Saturated positive or nega
 events in any included detector (source or receiving),
 too-small populations, invalid labels and ill-conditioned matrices fail. Controls
 need sufficient brightness; these checks cannot establish experimental suitability.
-This is not Cytoflow's through-origin regression or iterative spillover estimation.
-No Cytoflow source or GPL dependency has been copied into agentflow.
 
 ```json
 {
@@ -67,10 +65,10 @@ applying the resulting matrix is a separate action and clears gate review flags.
 Edits to control inputs invalidate the previous calculation. Python callers can use
 `agentflow.control_review.export_control_review(config, output)` with absolute input
 paths; `resolve_config(config, base_directory)` converts a file-relative config first.
-Separate unstained negative files, regression/AutoSpill and suitability assessment
+Separate unstained negative files, regression-based or iterative estimation and suitability assessment
 against representative lab controls remain outstanding.
 
-See [compensation audit](compensation-audit.md) for code comparisons, regression
+See [compensation audit](compensation-audit.md) for implementation checks, regression-test
 coverage and remaining limitations.
 
 The setup form scrolls on smaller screens while calculation, review and apply
