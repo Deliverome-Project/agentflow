@@ -1,8 +1,8 @@
-# FlowJo-style features to prioritize
+# Cytometry features to prioritize
 
-The [tutorial-based workspace design](design/flowjo-workflows.md) maps the 2018
-FlowJo tutorial to current capabilities, proposed GUI/CLI/Python/YAML contracts,
-and staged acceptance criteria. Its proposed interfaces are not implemented yet.
+The [workspace design](design/workspace-workflows.md) describes proposed
+GUI/CLI/Python/YAML contracts and staged acceptance criteria. Proposed interfaces
+are not necessarily implemented yet.
 
 | Capability | Current release | Next step / value for screens |
 |---|---|---|
@@ -13,7 +13,7 @@ and staged acceptance criteria. Its proposed interfaces are not implemented yet.
 | Templates | Shared recipe with explicit sample exceptions, missing-channel failures | Instrument/panel presets |
 | Quality control | Time plots, upper-range flags, empty-parent handling | Time exclusion gates, low-count thresholds and batch-level QC summaries |
 | Screen reporting | Metadata, plate maps, control normalization, well summaries and explicit hit cutoff | Assay-specific exclusions, dose-response fitting and statistical hit review |
-| Interchange | GatingML export; broader vendored API | Validated imports and FlowJo comparison fixtures, preserving provenance |
+| Interchange | GatingML export; broader vendored API | Validated imports and reference comparison fixtures, preserving provenance |
 | Agent workflows | CLI JSON status, importable API, immutable run directories | Stable JSON Schema, recipe diff summaries and review automation |
 | Sharing/install | Private Git install, locked environment, tests and wheel build | Versioned releases after representative team validation |
 

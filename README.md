@@ -142,7 +142,7 @@ single-stain tube; they are not inferred from the experimental samples. At least
 bright unsaturated controls, and an optional uncompensated cleanup recipe.
 The output contains thresholds, median values, counts, and control fingerprints,
 plus coefficient and before/after control plots. Inspect these before use; this
-is not a claim of equivalence to FlowJo AutoSpill or Cytoflow's regression estimator.
+is not a claim of equivalence to iterative spillover estimation or Cytoflow's regression estimator.
 The desktop **Calculate compensation…** dialog lets you assign single-stain files,
 inspect histograms and adjust raw-signal thresholds. It exports the same estimator
 results with control evidence and before/after plots. See [compensation details](docs/compensation.md).
@@ -223,12 +223,10 @@ package is not installed. Its three XSD schemas retain separate ISAC terms and
 are preserved byte-for-byte. FlowIO, FlowUtils and other scientific dependencies
 remain external and locked. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
-See [the roadmap](docs/roadmap.md) for prioritized FlowJo-style features; this
-release does not claim a complete FlowJo replacement.
+See [the roadmap](docs/roadmap.md) for planned cytometry and screening features.
 
-The [workspace feature design](docs/design/flowjo-workflows.md) translates the
-FlowJo basic tutorial into proposed simpler workflows and shared GUI, CLI, Python
-and YAML interfaces. It distinguishes current functionality from planned work.
+The [workspace feature design](docs/design/workspace-workflows.md) proposes
+shared GUI, CLI, Python and YAML interfaces. It distinguishes current functionality from planned work.
 
 See [saved analyses and metadata](docs/saved-analysis.md) for recipe versus snapshot
 files, review status, instrument provenance, histogram defaults and reporter ratios.
@@ -242,7 +240,7 @@ Existing recipes retain their explicit transforms and gate coordinates.
 The multi-sample viewer defaults to **Sample MFI**: choose a population, detector,
 and arithmetic mean or median. It calculates signal before display transforms,
 after the recipe's compensation if present. MFI here means arithmetic mean,
-not FlowJo's graph-space geometric mean. Bars retain individual samples (no
+not a graph-space geometric mean. Bars retain individual samples (no
 replicate averaging or inferred error bars), use `condition` labels and `group`
 colors from the sample sheet, and can be clicked to select a sample. Notion-derived
 annotations enter through the existing sample-sheet import; the viewer does not
@@ -260,7 +258,7 @@ events from compressing the cells. **Plot settings → Full scatter range** rest
 all events. This is a display crop only: every event remains in gate calculations
 and exports. The selected summary and scatter-view settings are saved with YAML.
 
-Sample MFI shows up to **30 samples per page**, including all 14 S2E15 samples
+Sample MFI shows up to **30 samples per page**, including experiments with 14 samples
 at once. By default it follows the selected population and recomputes after a gate
 edit is released. Uncheck **Follow selected population** to keep a fixed population:
 editing a child gate does not change its parent's mean or median. Compare-sample
@@ -293,3 +291,15 @@ these settings so differences in vendor detector gains are checked too.
 invented version. Original FCS keywords remain available for auditing. These are
 instrument-reported values, not independent calibration or acquisition-log verification.
 Older saved runs retain their original field interpretations until explicitly rerun.
+
+## Author and third-party components
+
+Agentflow is created and maintained by **Becca Carlson**, its sole listed project
+author. This designation applies to Agentflow, not its bundled dependencies.
+FlowKit retains Scott White's copyright and its accompanying BSD 3-Clause license.
+Fonts and standard XML schemas retain their own terms and copyright holders.
+No upstream endorsement is implied. See [third-party notices](THIRD_PARTY_NOTICES.md).
+
+The proposed license for original Agentflow code is MIT. Public release
+is pending the [release review](docs/release-review.md); this proposal does not
+relicense bundled components or grant a new license to the original code yet.

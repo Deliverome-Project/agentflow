@@ -17,7 +17,7 @@ matching autofluorescence backgrounds/particle types. Saturated positive or nega
 events in any included detector (source or receiving),
 too-small populations, invalid labels and ill-conditioned matrices fail. Controls
 need sufficient brightness; these checks cannot establish experimental suitability.
-This is not Cytoflow's through-origin regression or FlowJo's AutoSpill algorithm.
+This is not Cytoflow's through-origin regression or iterative spillover estimation.
 No Cytoflow source or GPL dependency has been copied into agentflow.
 
 ```json
@@ -53,11 +53,6 @@ controls and an analysis sample fail. Missing reference metadata remains unknown
 matching reported fields does not establish that unreported settings, particles,
 or instrument performance are suitable. Older and imported matrices without this
 metadata retain label/matrix validation but cannot get this acquisition comparison.
-
-FlowJo's own guidance also emphasizes control assignment, cleanup and
-positive/negative gate review, and adequate control brightness:
-[compensation workflow](https://docs.flowjo.com/flowjo/experiment-based-platforms/plat-comp-overview/plat-comp-workflow/),
-[compensation FAQ](https://www.flowjo.com/docs/flowjo10/experiment-based-platforms/plat-comp-overview/plat-comp-faq).
 
 CSV/TSV import accepts a labelled square table with source detector names in the
 first column and target names in the first row. It is not an unrestricted parser
