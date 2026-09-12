@@ -825,3 +825,21 @@ def test_comparison_titles_include_condition_and_file(window):
     ax = find_gallery(window, ("sample", window.records[0]["sample_id"]))
     assert "Accutase 37C (5 min)" in ax.get_title()
     assert window.records[0]["sample_id"] in ax.get_title()
+
+
+def test_density_grid_uses_visible_scatter_extent():
+    from matplotlib.figure import Figure
+
+    from agentflow.plot_views import draw_events, scatter_limits
+
+    rng = np.random.default_rng(17)
+    cloud = rng.normal(500000, 100000, (5000, 2))
+    data = np.vstack([cloud, [1e8, 1e8]])
+    original = data.copy()
+    limits = scatter_limits(data, ["FSC-A", "SSC-A"])
+    ax = Figure().subplots()
+    draw_events(ax, data, ["FSC-A", "SSC-A"], limits=limits)
+    occupied = ax.collections[0].get_offsets()
+    assert len(occupied) > 500  # Fine cell-cloud detail, not a handful of giant full-range bins.
+    assert occupied[:, 0].max() < 2e6
+    np.testing.assert_array_equal(data, original)

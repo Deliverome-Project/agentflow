@@ -566,6 +566,7 @@ class ScreenWindow(GateWindow):
                 self.opacity.value() / 100,
                 ["count", "area", "peak"][self.normalization.currentIndex()],
                 bins,
+                limits=scatter_limits(data, gate["channels"], self.full_scatter.isChecked()),
             )
         if len(records) > 1:
             self.ax.legend(fontsize=8, loc="upper right", frameon=False)
@@ -731,7 +732,9 @@ class ScreenWindow(GateWindow):
                 data = prepared.transformed.loc[
                     masks[gate["name"] if gate["kind"] == "boolean" else gate["parent"]], gate["channels"]
                 ].to_numpy()
-                draw_events(ax, data, gate["channels"], "density", record["color"])
+                individual_limits = scatter_limits(data, gate["channels"], self.full_scatter.isChecked())
+                density_limits = shared_limits if shared_limits is not None else individual_limits
+                draw_events(ax, data, gate["channels"], "density", record["color"], limits=density_limits)
                 draw_boundary(ax, gate, recipe=self.state.recipe)
                 count = int(masks[gate["name"]].sum())
                 total = int(masks[gate["parent"]].sum())
@@ -745,7 +748,6 @@ class ScreenWindow(GateWindow):
                     fontsize=7 if compare else 8,
                     color="#922038" if gate["name"] == self.active_name else "#141414",
                 )
-                individual_limits = scatter_limits(data, gate["channels"], self.full_scatter.isChecked())
                 if individual_limits is not None and not shared_limits:
                     ax.set_xlim(individual_limits[0][0], individual_limits[1][0])
                     ax.set_ylim(individual_limits[0][1], individual_limits[1][1])
