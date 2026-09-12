@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentflow-cytometry"
-version = "0.7.0"
+version = "0.7.1"
 readme = "README.md"
 description = "Reproducible flow cytometry screens with an optional desktop gate editor"
 authors = [{name = "Becca Carlson"}]

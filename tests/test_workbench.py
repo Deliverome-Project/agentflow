@@ -861,3 +861,33 @@ def test_comparison_last_page_keeps_fixed_two_by_two_cells(window, total):
     for i, ax in enumerate(last):
         np.testing.assert_allclose(ax.get_position().bounds, first[i])
         assert ax.get_subplotspec().get_gridspec().get_geometry() == (2, 2)
+
+
+def test_compensation_logicle_preserves_raw_threshold_selection(window, demo):
+    from agentflow import flowkit
+    from agentflow.compensation_wizard import CompensationWizard
+    from agentflow.control_review import resolve_config
+    from agentflow.engine import make_transform
+    from agentflow.workflow import default_transform
+
+    wizard = CompensationWizard(window, ["BL1-A"])
+    config = resolve_config(json.loads((demo / "controls.json").read_text()), demo)
+    wizard.set_config(config)
+    wizard.table.selectRow(0)
+    wizard.preview()
+    assert "logicle" in wizard.ax.get_xlabel()
+    detector, path = [wizard.table.item(0, c).text() for c in range(2)]
+    sample = flowkit.Sample(path)
+    transform = make_transform(default_transform(sample, detector))
+    values = np.array([-100.0, 0.0, 100.0, 10000.0])
+    np.testing.assert_allclose(wizard.ax.xaxis.get_transform().transform(values), transform.apply(values))
+    before = wizard.configuration()
+    wizard.place_threshold(SimpleNamespace(button=1, inaxes=wizard.ax, xdata=250.0))
+    after = wizard.configuration()
+    assert after["controls"][0]["negative_max"] == 250.0
+    assert after["controls"][0]["positive_min"] == before["controls"][0]["positive_min"]
+    raw = sample.get_channel_events(detector, source="raw")
+    assert f"Negative: {np.count_nonzero(raw <= 250):,}" in wizard.status.text()
+    wizard.canvas.draw()
+    wizard.figure.savefig("/private/tmp/agentflow-v071-compensation.png")
+    wizard.reject()

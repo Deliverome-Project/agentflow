@@ -75,8 +75,8 @@ uv run agentflow run local-examples/synthetic/workflow/samples.csv \
   --out local-examples/synthetic/run-01
 ```
 
-Open `local-examples/synthetic/run-01/report.html` to inspect the results. Keep the
-report together with its generated figures and linked files.
+Open `local-examples/synthetic/run-01/report.html` to inspect the results. Plot images are embedded, so the HTML can be viewed on its own. Keep the complete
+run folder to open linked tables, gates and provenance.
 
 With the desktop extra installed, edit the same experiment:
 
@@ -134,7 +134,8 @@ review. Saving alone does not approve untouched draft gates. See
 
 Choose an embedded FCS matrix, import a labelled spillover matrix, or calculate
 one from explicitly selected positive and negative populations in single-stain
-controls. Both CLI and desktop workflows are available:
+controls. The control viewer uses logicle with raw-signal thresholds; display transforms
+do not change control selection or matrix estimates. Both CLI and desktop workflows are available:
 
 ```sh
 uv run agentflow compensation import matrix.csv --out compensation.json
