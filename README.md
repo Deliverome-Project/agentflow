@@ -266,3 +266,6 @@ edit is released. Uncheck **Follow selected population** to keep a fixed populat
 editing a child gate does not change its parent's mean or median. Compare-sample
 plot titles include both condition and sample ID. The follow/fixed preference is
 saved in the recipe alongside the summary detector and statistic.
+
+Compare-sample pages use a fixed 2×2 layout (four samples per page). The final
+page leaves unused positions empty rather than enlarging the remaining plots.

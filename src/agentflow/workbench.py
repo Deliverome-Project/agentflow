@@ -694,12 +694,14 @@ class ScreenWindow(GateWindow):
         columns = 1 if self.gallery_canvas.width() < 330 else 2
         available_rows = max(2, self.gallery_canvas.height() // 145)
         capacity = min(12, columns * available_rows)
+        if compare:
+            columns, capacity = 2, 4
         self.gallery_page.setMaximum(max(1, (len(items) + capacity - 1) // capacity))
         start = (self.gallery_page.value() - 1) * capacity
         all_items = items
         items = items[start : start + capacity]
         n = len(items)
-        rows = max(1, (n + columns - 1) // columns)
+        rows = 2 if compare else max(1, (n + columns - 1) // columns)
         self.gallery_range.setText(f"{start + 1 if n else 0}–{start + n} of {len(all_items)} plots")
         shared_limits = None
         active = self.state.gate(self.active_name)
@@ -744,8 +746,8 @@ class ScreenWindow(GateWindow):
                     else TITLES.get(gate["name"], gate["name"])
                 )
                 ax.set_title(
-                    f"{title}{' · ' if compare else chr(10)}{count:,} / {total:,}",
-                    fontsize=7 if compare else 8,
+                    f"{title}\n{count:,} / {total:,}",
+                    fontsize=min(7, self.gallery_canvas.width() / 65) if compare else 8,
                     color="#922038" if gate["name"] == self.active_name else "#141414",
                 )
                 if individual_limits is not None and not shared_limits:
@@ -762,7 +764,13 @@ class ScreenWindow(GateWindow):
                 ax.yaxis.label.set_size(7)
             except (ValueError, OSError, KeyError) as error:
                 ax.text(0.05, 0.5, str(error), transform=ax.transAxes, wrap=True, fontsize=8)
-        self.gallery_figure.tight_layout(pad=0.8, h_pad=1.2, w_pad=0.8)
+        if compare:
+            # Fixed cell geometry across pages, including the partly filled final page.
+            self.gallery_figure.subplots_adjust(
+                left=0.18, right=0.98, bottom=0.17, top=0.83, wspace=0.65, hspace=0.95
+            )
+        else:
+            self.gallery_figure.tight_layout(pad=0.8, h_pad=1.2, w_pad=0.8)
         self.gallery_canvas.draw_idle()
 
     def sample_summary_table(self):

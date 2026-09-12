@@ -843,3 +843,21 @@ def test_density_grid_uses_visible_scatter_extent():
     assert len(occupied) > 500  # Fine cell-cloud detail, not a handful of giant full-range bins.
     assert occupied[:, 0].max() < 2e6
     np.testing.assert_array_equal(data, original)
+
+
+@pytest.mark.parametrize("total", [5, 6, 7])
+def test_comparison_last_page_keeps_fixed_two_by_two_cells(window, total):
+    window.records = [
+        dict(window.records[0], sample_id=f"S{i}", condition=f"Condition {i}") for i in range(total)
+    ]
+    window.gallery_mode.setCurrentText("Compare samples")
+    window.update_gallery()
+    first = [ax.get_position().bounds for ax in window.gallery_axes]
+    assert len(first) == 4
+    window.gallery_page.setValue(2)
+    window.update_gallery()
+    last = list(window.gallery_axes)
+    assert len(last) == total - 4
+    for i, ax in enumerate(last):
+        np.testing.assert_allclose(ax.get_position().bounds, first[i])
+        assert ax.get_subplotspec().get_gridspec().get_geometry() == (2, 2)
