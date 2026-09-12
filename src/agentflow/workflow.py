@@ -51,6 +51,21 @@ def mark_unreviewed(recipe, name=None):
     return affected
 
 
+def default_transform(sample, channel):
+    index = sample.pnn_labels.index(channel)
+    if index not in sample.fluoro_indices:
+        return {"kind": "linear"}
+    return {
+        "kind": "logicle",
+        "parameters": {
+            "param_t": float(sample.channels.iloc[index]["pnr"]),
+            "param_w": 0.5,
+            "param_m": 4.5,
+            "param_a": 0,
+        },
+    }
+
+
 def add_reporter(recipe, sample_path, role, channel, confirmed=False):
     """Map a pending role explicitly; never manufacture an unacquired channel."""
     recipe = copy.deepcopy(recipe)
@@ -65,7 +80,7 @@ def add_reporter(recipe, sample_path, role, channel, confirmed=False):
         raise ValueError("A detector is already assigned to a different dye role")
     if any(g["name"] == role for g in recipe["gates"]):
         raise ValueError("Role already exists; edit its gate or create a new workflow to remap it")
-    recipe["transforms"].setdefault(channel, {"kind": "asinh", "cofactor": 150})
+    recipe["transforms"].setdefault(channel, default_transform(sample, channel))
     recipe.setdefault("channel_roles", {})[role] = {"detector": channel, "confirmed": confirmed}
     names = [g["name"] for g in recipe["gates"]]
     parent = (

@@ -27,8 +27,9 @@ def draw_events(
     opacity=0.65,
     normalization="count",
     bins=None,
+    limits=None,
 ):
-    """Density uses every event; only scatter is deterministically downsampled."""
+    """Bin density at the displayed range; all-event gate counts are independent."""
     if len(channels) == 1:
         bins = 100 if bins is None else bins
         counts, edges = np.histogram(data[:, 0], bins=bins)
@@ -63,7 +64,12 @@ def draw_events(
                 rasterized=True,
             )
         elif kind == "contour":
-            hist, xe, ye = np.histogram2d(data[:, 0], data[:, 1], bins=55)
+            hist, xe, ye = np.histogram2d(
+                data[:, 0],
+                data[:, 1],
+                bins=55,
+                range=None if limits is None else list(zip(limits[0], limits[1])),
+            )
             from scipy.ndimage import gaussian_filter
 
             smooth = gaussian_filter(hist, 1.1)
@@ -82,6 +88,7 @@ def draw_events(
             ax.hexbin(
                 data[:, 0],
                 data[:, 1],
+                extent=None if limits is None else (limits[0][0], limits[1][0], limits[0][1], limits[1][1]),
                 gridsize=110,
                 mincnt=1,
                 bins="log",
@@ -218,3 +225,18 @@ def draw_boundary(ax, gate, color="#e2655e", linewidth=1.7, pickable=False, reci
     return ax.plot(
         dense[:, 0], dense[:, 1], color=color, linewidth=linewidth, picker=6 if pickable else False
     )
+
+
+def scatter_limits(data, channels, full_range=False):
+    """Display-only scatter limits; never filter the analytical event array."""
+    data = np.asarray(data)
+    if data.ndim != 2 or not len(data) or len(channels) != 2:
+        return None
+    if not all(c.startswith(("FSC-", "SSC-")) for c in channels):
+        return None
+    data = data[np.isfinite(data).all(axis=1)]
+    if not len(data):
+        return None
+    low, high = np.quantile(data, [0, 1] if full_range else [0.005, 0.995], axis=0)
+    margin = np.maximum((high - low) * 0.08, 1)
+    return low - margin, high + margin

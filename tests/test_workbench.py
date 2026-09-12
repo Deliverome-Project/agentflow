@@ -58,6 +58,7 @@ def find_gallery(window, target):
 
 
 def test_gallery_detector_labels_selection_and_sample_comparison(window):
+    window.gallery_mode.setCurrentText("All populations")
     assert len(gallery_items(window)) == 6
     assert all(ax.get_xlabel() for ax in window.gallery_axes)
     ax = find_gallery(window, ("gate", "gfp"))
@@ -608,6 +609,7 @@ def test_launcher_opens_yaml_and_rejects_ambiguous_recipe(window, demo, tmp_path
 
 @pytest.mark.parametrize("size", [(980, 620), (1280, 720), (1440, 900)])
 def test_counts_and_gallery_fit_without_scrolling(window, size):
+    window.gallery_mode.setCurrentText("All populations")
     window.resize(*size)
     window.show_gate("live")
     W.QApplication.processEvents()
@@ -656,8 +658,8 @@ def test_dummy_histograms_open_between_and_scatter_exploration_is_read_only(wind
     dialog.x.setCurrentText("BL1-A")
     dialog.y.setCurrentText("RL1-A")
     dialog.style.setCurrentText("Density")
-    assert dialog.ax.get_xlabel() == "BL1-A · asinh"
-    assert dialog.ax.get_ylabel() == "RL1-A · asinh"
+    assert dialog.ax.get_xlabel() == "BL1-A · logicle"
+    assert dialog.ax.get_ylabel() == "RL1-A · logicle"
     assert f"{window.state.counts()['live']:,}" in dialog.count.text()
     assert window.state.recipe == before
 
@@ -747,3 +749,115 @@ def test_delete_population_cascade_cancel_undo_and_save(window, monkeypatch):
     window.state.sample_scope = False
     with pytest.raises(ValueError, match="at least one"):
         window.state.delete_population("cells")
+
+
+def test_sample_mfi_default_uses_metadata_and_untransformed_signal(window):
+    assert window.gallery_mode.currentText() == "Sample MFI"
+    window.summary_detector.setCurrentIndex(0)
+    table = window.sample_summary_table()
+    assert len(table) == len(window.records)
+    first = table.iloc[0]
+    prepared, masks = window.session.get(window.records[0], window.state.recipe)
+    expected = prepared.values.loc[masks[first.population], first.detector].mean()
+    assert first.value == pytest.approx(expected)
+    assert first.event_count == int(masks[first.population].sum())
+    window.summary_statistic.setCurrentIndex(1)
+    assert window.sample_summary_table().iloc[0].value == pytest.approx(
+        prepared.values.loc[masks[first.population], first.detector].median()
+    )
+    window.update_gallery()
+    ax = next(iter(window.gallery_axes))
+    sid = window.gallery_axes[ax][1][1]
+    window.select_gallery(SimpleNamespace(inaxes=ax, ydata=1))
+    assert window.record["sample_id"] == sid
+
+
+def test_scatter_limits_resist_outliers_without_changing_data():
+    from agentflow.plot_views import scatter_limits
+
+    data = np.column_stack([np.arange(1000), np.arange(1000)]).astype(float)
+    data[-1] = 1e8
+    original = data.copy()
+    central = scatter_limits(data, ["FSC-A", "SSC-A"])
+    full = scatter_limits(data, ["FSC-A", "SSC-A"], full_range=True)
+    assert central[1].max() < 2000
+    assert full[1].min() > 1e8
+    np.testing.assert_array_equal(data, original)
+    assert scatter_limits(data, ["FL1-A", "SSC-A"]) is None
+
+
+def test_summary_shows_30_samples_and_refreshes_after_gate_edit(window):
+    # Distinct sample IDs may legitimately refer to reused synthetic data.
+    window.records = [
+        dict(window.records[0], sample_id=f"S{i}", condition=f"Condition {i}") for i in range(30)
+    ]
+    window.record = window.records[0]
+    window.show_gate("gfp")
+    window.update_gallery()
+    assert window.summary_population.currentText() == "gfp"
+    ax = next(iter(window.gallery_axes))
+    assert len(ax.patches) == 30
+    assert window.gallery_page.maximum() == 1
+    before = window.sample_summary_table()
+    gate = window.state.gate("gfp")
+    prepared, masks = window.session.get(window.records[0], window.state.recipe)
+    values = prepared.transformed.loc[masks["gfp"], gate["channels"][0]]
+    # Tightening the gate must invalidate cached memberships and change the actual bars.
+    bounds = [float(values.quantile(0.8)), gate["bounds"][1]]
+    window.perform(lambda: window.state.geometry("gfp", "bounds", bounds), redraw=False)
+    W.QApplication.processEvents()
+    window.update_gallery()
+    after = window.sample_summary_table()
+    assert (after.event_count < before.event_count).all()
+    assert not np.allclose(after.value, before.value)
+    ax = next(iter(window.gallery_axes))
+    np.testing.assert_allclose([bar.get_width() for bar in ax.patches], after.value)
+    window.summary_follow.setChecked(False)
+    window.summary_population.setCurrentText("live")
+    window.show_gate("cy5")
+    window.update_gallery()
+    assert window.summary_population.currentText() == "live"
+
+
+def test_comparison_titles_include_condition_and_file(window):
+    window.records[0]["condition"] = "Accutase 37C (5 min)"
+    window.gallery_mode.setCurrentText("Compare samples")
+    ax = find_gallery(window, ("sample", window.records[0]["sample_id"]))
+    assert "Accutase 37C (5 min)" in ax.get_title()
+    assert window.records[0]["sample_id"] in ax.get_title()
+
+
+def test_density_grid_uses_visible_scatter_extent():
+    from matplotlib.figure import Figure
+
+    from agentflow.plot_views import draw_events, scatter_limits
+
+    rng = np.random.default_rng(17)
+    cloud = rng.normal(500000, 100000, (5000, 2))
+    data = np.vstack([cloud, [1e8, 1e8]])
+    original = data.copy()
+    limits = scatter_limits(data, ["FSC-A", "SSC-A"])
+    ax = Figure().subplots()
+    draw_events(ax, data, ["FSC-A", "SSC-A"], limits=limits)
+    occupied = ax.collections[0].get_offsets()
+    assert len(occupied) > 500  # Fine cell-cloud detail, not a handful of giant full-range bins.
+    assert occupied[:, 0].max() < 2e6
+    np.testing.assert_array_equal(data, original)
+
+
+@pytest.mark.parametrize("total", [5, 6, 7])
+def test_comparison_last_page_keeps_fixed_two_by_two_cells(window, total):
+    window.records = [
+        dict(window.records[0], sample_id=f"S{i}", condition=f"Condition {i}") for i in range(total)
+    ]
+    window.gallery_mode.setCurrentText("Compare samples")
+    window.update_gallery()
+    first = [ax.get_position().bounds for ax in window.gallery_axes]
+    assert len(first) == 4
+    window.gallery_page.setValue(2)
+    window.update_gallery()
+    last = list(window.gallery_axes)
+    assert len(last) == total - 4
+    for i, ax in enumerate(last):
+        np.testing.assert_allclose(ax.get_position().bounds, first[i])
+        assert ax.get_subplotspec().get_gridspec().get_geometry() == (2, 2)

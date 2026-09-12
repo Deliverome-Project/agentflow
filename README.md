@@ -232,3 +232,64 @@ and YAML interfaces. It distinguishes current functionality from planned work.
 
 See [saved analyses and metadata](docs/saved-analysis.md) for recipe versus snapshot
 files, review status, instrument provenance, histogram defaults and reporter ratios.
+
+### Sample summaries and default axes
+
+New reporter/viability assignments use **logicle** (T from the detector's FCS range,
+W=0.5, M=4.5, A=0); these are editable starting parameters, not fitted controls.
+Existing recipes retain their explicit transforms and gate coordinates.
+
+The multi-sample viewer defaults to **Sample MFI**: choose a population, detector,
+and arithmetic mean or median. It calculates signal before display transforms,
+after the recipe's compensation if present. MFI here means arithmetic mean,
+not FlowJo's graph-space geometric mean. Bars retain individual samples (no
+replicate averaging or inferred error bars), use `condition` labels and `group`
+colors from the sample sheet, and can be clicked to select a sample. Notion-derived
+annotations enter through the existing sample-sheet import; the viewer does not
+query Notion or guess biological identities. Export the same table headlessly:
+
+```bash
+agentflow sample-summary samples.csv --recipe gates.yaml --population live \
+  --detector FL5-A --statistic mean --out sample-summary.csv
+```
+
+Plate maps need explicit `plate` and `well` columns. Missing assignments are
+explained in the viewer; filename suffixes are never assumed to be culture wells.
+FSC/SSC views initially show the central 99% plus margin to prevent rare extreme
+events from compressing the cells. **Plot settings → Full scatter range** restores
+all events. This is a display crop only: every event remains in gate calculations
+and exports. The selected summary and scatter-view settings are saved with YAML.
+
+Sample MFI shows up to **30 samples per page**, including all 14 S2E15 samples
+at once. By default it follows the selected population and recomputes after a gate
+edit is released. Uncheck **Follow selected population** to keep a fixed population:
+editing a child gate does not change its parent's mean or median. Compare-sample
+plot titles include both condition and sample ID. The follow/fixed preference is
+saved in the recipe alongside the summary detector and statistic.
+
+Compare-sample pages use a fixed 2×2 layout (four samples per page). The final
+page leaves unused positions empty rather than enlarging the remaining plots.
+
+Human gate edits count as review: changing a gate marks that gate reviewed, and
+Save persists the flag in both recipe and reproducibility YAML. Undo restores the
+previous review state. Descendants remain unreviewed after a parent edit until
+separately edited or marked reviewed. A sample-specific edit reviews only that
+sample's exception. Saving alone does not approve untouched or generated gates;
+compensation changes still invalidate affected reviews.
+
+### Instrument metadata meanings
+
+`detectors[*].gain` is the reported FCS `$PnG` factor, not necessarily the gain
+shown in the acquisition UI. Missing `$PnG` stays null; `preprocessing_gain`
+separately records the factor FlowKit uses, including defaults. On CytoFLEX,
+`detector_gain` is read from vendor `CHnGAIN` and matched to area/height parameters
+by explicit `CHnID`, never by assuming channel and parameter numbers coincide.
+Gain source keywords are retained. Vendor gain is descriptive; it is not applied
+a second time to event intensities. Newly estimated compensation records include
+these settings so differences in vendor detector gains are checked too.
+
+`$SYS` is recorded as `acquisition_system`. `acquisition_software` comes from
+`$CREATOR` when present; a CytExpert vendor flag is only a software hint, with no
+invented version. Original FCS keywords remain available for auditing. These are
+instrument-reported values, not independent calibration or acquisition-log verification.
+Older saved runs retain their original field interpretations until explicitly rerun.

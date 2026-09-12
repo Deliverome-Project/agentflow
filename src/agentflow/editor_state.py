@@ -86,9 +86,11 @@ class EditorState:
             changes.setdefault(name, {})[key] = value
             for gate_name in affected:
                 changes.setdefault(gate_name, {})["reviewed"] = False
+            changes[name]["reviewed"] = True
         else:
             next(g for g in candidate["gates"] if g["name"] == name)[key] = value
             self.invalidate(candidate, name)
+            next(g for g in candidate["gates"] if g["name"] == name)["reviewed"] = True
         self.apply(candidate)
 
     def review(self, name):

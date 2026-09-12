@@ -74,7 +74,7 @@ def test_native_threshold_typing_save_and_reopen(window, app):
     click(window.save_button)
     assert window.state.saved
     assert load_recipe(window.state.path)["gates"][1]["bounds"] == [2.0, None]
-    assert not load_recipe(window.state.path)["gates"][1]["reviewed"]
+    assert load_recipe(window.state.path)["gates"][1]["reviewed"]
 
 
 def test_mouse_drag_counts_undo_redo_and_resize(window, app):

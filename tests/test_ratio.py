@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from agentflow import flowkit
 from agentflow.engine import evaluate, prepare
@@ -126,3 +127,40 @@ def test_standard_ratio_gatingml_roundtrip_and_cached_transforms(tmp_path):
     transform = flowkit.transforms.RatioTransform(sample.pnn_labels, 1.0, 0.0, 0.0)
     raw = sample.get_events(source="raw")
     np.testing.assert_allclose(transform.apply(sample), raw[:, 0] / raw[:, 1])
+
+
+def test_cytoflex_gain_mapping_distinguishes_fcs_gain_and_vendor_gain():
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    from agentflow.acquisition import acquisition_settings, check_acquisition, instrument_provenance
+
+    metadata = {
+        "cyt": "CytoFLEX S",
+        "sys": "Microsoft Windows",
+        "cytexpertfil": "True",
+        "p1g": "1",
+        "ch3id": "FL5",
+        "ch3gain": "7",
+        "ch5id": "FL11",
+        "ch5gain": "490",
+    }
+    sample = SimpleNamespace(
+        pnn_labels=["FL11-A", "FL5-H", "FL5-A"],
+        event_count=2,
+        channels=pd.DataFrame({"png": [1, 1, 1], "pnr": [1000] * 3, "pne": [(0, 0)] * 3}),
+        get_metadata=lambda: metadata,
+    )
+    result = instrument_provenance(sample)
+    assert result["detectors"]["FL11-A"]["gain"] == 1
+    assert result["detectors"]["FL11-A"]["detector_gain"] == 490
+    assert result["detectors"]["FL5-A"]["detector_gain"] == 7
+    assert result["detectors"]["FL5-H"]["gain"] is None
+    assert result["detectors"]["FL5-H"]["preprocessing_gain"] == 1
+    assert result["acquisition_system"] == "Microsoft Windows"
+    assert result["acquisition_software"] is None
+    reference = acquisition_settings(sample, sample.pnn_labels)
+    metadata["ch3gain"] = "8"
+    with pytest.raises(ValueError, match="detector_gain"):
+        check_acquisition(reference, acquisition_settings(sample, sample.pnn_labels))
