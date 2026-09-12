@@ -22,36 +22,22 @@ controls, reuse gates, inspect exceptions, export the same endpoints and figures
 and rerun when inputs or gates change. Broad specialist cytometry platforms are
 outside the first implementation scope.
 
-## Source and interpretation
-
-Reference: *FlowJo Basic Tutorial*, version 2.0, revision January 1, 2018, 45 pages,
-provided by the user as `FlowJo®_Basic_Tutorial_©2018.pdf`.
-SHA-256: `fba9f05b72e51b4d3f3125dbfd054aa016cfc2e214142bafc2f25bbb46d9c26d`.
-Page numbers below refer to the printed tutorial pages. The PDF and its screenshots
-are not redistributed in this repository. Its installation instructions and example
-biological gates are reference material, not instructions for Agentflow or our data.
-This is a historical workflow comparison, not a claim about current FlowJo parity.
-
-The tutorial is detailed on groups, gates, statistics, layouts and saving. It only
-mentions compensation briefly on pages 8 and 45 and refers to advanced material;
-it does not establish a compensation-estimator specification for this project.
-
 ## Workflow coverage and gaps
 
-| Tutorial workflow | Pages | Agentflow 0.5.0 | Proposed experience |
-|---|---:|---|---|
-| Import files/folders; organize overlapping groups | 4–7 | CSV input; one color/filter group per row | Drop folder or import sheet; searchable sample table; overlapping named collections |
-| Inspect metadata, compensation and acquisition quality | 8–9 | Detector dialog, matrix view, time plots and basic flags | Sample inspector with explicit status text and clickable QC evidence |
-| Navigate a parent/child gating hierarchy | 10–14 | Shared native gating; flat population list and gallery | Collapsible population tree, ancestry strip and double-click drill-down |
-| Ellipse, polygon, range, quadrant and rectangle tools | 11–16 | Polygon, range, rectangle and AND/OR | Add orthogonal quadrants first; native ellipsoids later; spider quadrants deferred |
-| Adjust scaling around zero and negative values | 16–17 | Fixed analysis transforms; alternate display previews | Per-detector display controls with editable asinh/logicle parameters and saved presets |
-| Apply a template to a group; edit and synchronize exceptions | 18–20 | Whole-sheet shared gates plus sample exceptions | Explicit analysis sets, linked templates, scope preview and promote/reset exception actions |
-| Configure statistics for named populations | 21–24 | Fixed counts, parent/total fractions and medians | Endpoint builder with population, signal space, detector and denominator |
-| Save plot layouts, include ancestry, iterate and batch | 25–33 | Fixed QC report and galleries | Reusable report boards; iterate by sample/condition/plate; headless export |
-| Style, order and offset overlays | 34–39 | Group colors, normalization and pinned references | Legend toggles, stable ordering, line styles, offset histograms and shared bin settings |
-| Build named tables and heatmaps, export | 40–42 | Fixed summary CSV and screen tables | Endpoint table preview, column aliases, explicit heatmap ranges; CSV/Parquet/HTML |
-| Save workspace, template or data archive; reconnect files | 43–44 | JSON recipe, CSV sheet, immutable run directory | Workspace YAML, portable templates, fingerprint-based relinking and explicit data bundles |
-| Derived parameters and specialist platforms | 45 | Not exposed | Consider named ratios after denominator handling; defer kinetics, cell cycle, proliferation and embeddings |
+| Workflow | Agentflow 0.5.0 | Proposed experience |
+|---|---|---|
+| Import files/folders; organize overlapping groups | CSV input; one color/filter group per row | Drop folder or import sheet; searchable sample table; overlapping named collections |
+| Inspect metadata, compensation and acquisition quality | Detector dialog, matrix view, time plots and basic flags | Sample inspector with explicit status text and clickable QC evidence |
+| Navigate a parent/child gating hierarchy | Shared native gating; flat population list and gallery | Collapsible population tree, ancestry strip and double-click drill-down |
+| Ellipse, polygon, range, quadrant and rectangle tools | Polygon, range, rectangle and AND/OR | Add orthogonal quadrants first; native ellipsoids later; spider quadrants deferred |
+| Adjust scaling around zero and negative values | Fixed analysis transforms; alternate display previews | Per-detector display controls with editable asinh/logicle parameters and saved presets |
+| Apply a template to a group; edit and synchronize exceptions | Whole-sheet shared gates plus sample exceptions | Explicit analysis sets, linked templates, scope preview and promote/reset exception actions |
+| Configure statistics for named populations | Fixed counts, parent/total fractions and medians | Endpoint builder with population, signal space, detector and denominator |
+| Save plot layouts, include ancestry, iterate and batch | Fixed QC report and galleries | Reusable report boards; iterate by sample/condition/plate; headless export |
+| Style, order and offset overlays | Group colors, normalization and pinned references | Legend toggles, stable ordering, line styles, offset histograms and shared bin settings |
+| Build named tables and heatmaps, export | Fixed summary CSV and screen tables | Endpoint table preview, column aliases, explicit heatmap ranges; CSV/Parquet/HTML |
+| Save workspace, template or data archive; reconnect files | JSON recipe, CSV sheet, immutable run directory | Workspace YAML, portable templates, fingerprint-based relinking and explicit data bundles |
+| Derived parameters and specialist platforms | Not exposed | Consider named ratios after denominator handling; defer kinetics, cell cycle, proliferation and embeddings |
 
 ## Main window and interaction model
 
@@ -288,9 +274,9 @@ Excel is a later adapter. Table heatmaps explicitly choose per-column or shared
 scales, display missing values distinctly, and never modify the underlying values.
 Report-only changes can reuse event masks; editing a gate cannot reuse stale stats.
 
-## Screening additions beyond the tutorial
+## Screening additions
 
-Treat these as user-workflow extensions, not features specified by the tutorial:
+These extensions support repeated screening workflows:
 
 - Control roles distinguish compensation single stains, unstained, FMO, biological
   negative and positive controls. Filename suggestions require explicit assignment.
@@ -312,7 +298,7 @@ Treat these as user-workflow extensions, not features specified by the tutorial:
 
 A workspace references data; a template omits sample-specific paths and exceptions;
 a bundle optionally includes data. Do not claim WSP/ACS/WSPT compatibility merely
-because these concepts resemble the tutorial. Relinking scans candidate files and
+based only on conceptual similarity. Relinking scans candidate files and
 matches recorded fingerprints, with detector/event metadata as supporting evidence.
 A filename alone is insufficient. Report ambiguous or missing matches; require an
 explicit mapping for changed input content and clear affected reviews. Bundles

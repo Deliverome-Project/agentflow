@@ -1,6 +1,6 @@
 """Labelled spillover matrices and explicit single-stain control estimation.
 
-Independent median-difference implementation, not copied from Cytoflow.
+Estimates spillover from user-selected positive and negative population medians.
 Matrix orientation: measured = true @ spillover. No intensity transforms here.
 """
 

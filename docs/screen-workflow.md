@@ -129,12 +129,9 @@ fictional measured viability channel.
 
 ## Design references
 
-The group/gallery workflow is informed by [FlowJo's analysis tree](https://flowjo.com/docs/flowjo11/analysis-tree-2)
-and [graph gallery](https://www.flowjo.com/docs/flowjo11/graphs-and-gating).
-See [FlowJo transforms](https://flowjo.com/docs/flowjo11/graphs-and-gating/transforms)
-for display-scale context and this [flow screening protocol](https://pubmed.ncbi.nlm.nih.gov/33778785/)
-for control-based gating and expression/viability plate summaries. Agentflow does
-not claim exact implementation equivalence to FlowJo or Sony software.
+This [flow screening protocol](https://pubmed.ncbi.nlm.nih.gov/33778785/)
+discusses control-based gating and expression/viability plate summaries.
+Agentflow does not claim numerical equivalence to other cytometry software.
 
 ## Pinned reference samples
 
