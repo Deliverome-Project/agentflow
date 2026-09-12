@@ -12,7 +12,7 @@ from PySide6 import QtWidgets as W
 
 from .desktop import TITLES, GateWindow, button, label
 from .engine import make_transform
-from .plot_views import apply_axes, display_spec, draw_boundary, draw_events
+from .plot_views import apply_axes, display_spec, draw_boundary, draw_events, scatter_limits
 from .samples import SampleSession, sample_recipe
 
 
@@ -148,6 +148,12 @@ class ScreenWindow(GateWindow):
             combo.currentIndexChanged.connect(self.redraw)
             axes.addWidget(combo)
         axes.addWidget(button("Use gating axes", self.gating_axes))
+        self.full_scatter = W.QCheckBox("Full scatter range")
+        self.full_scatter.setToolTip(
+            "Unchecked: central 99% view. Off-screen events still count; gates are unchanged."
+        )
+        self.full_scatter.toggled.connect(self.redraw)
+        axes.addWidget(self.full_scatter)
         self.parent_button = button("↑ Parent", self.select_parent)
         self.parent_button.setToolTip("Select the upstream population")
         self.main_layout.takeAt(0)
@@ -165,9 +171,42 @@ class ScreenWindow(GateWindow):
         gallery_layout.setContentsMargins(10, 12, 10, 8)
         gallery_layout.addWidget(label("POPULATION OVERVIEW", "eyebrow"))
         self.gallery_mode = W.QComboBox()
-        self.gallery_mode.addItems(["All populations", "Compare samples", "Plate map", "Ancestry"])
+        self.gallery_mode.addItems(
+            ["All populations", "Compare samples", "Plate map", "Ancestry", "Sample MFI"]
+        )
         self.gallery_mode.currentIndexChanged.connect(self.request_gallery)
+        self.gallery_mode.setCurrentIndex(4)
         gallery_layout.addWidget(self.gallery_mode)
+        self.summary_controls = W.QWidget()
+        summary_layout = W.QFormLayout(self.summary_controls)
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        self.summary_population = W.QComboBox()
+        names = ["root"] + [g["name"] for g in recipe["gates"]]
+        self.summary_population.addItems(names)
+        self.summary_population.setCurrentText("live" if "live" in names else "root")
+        self.summary_detector = W.QComboBox()
+        sample = self.state.prepared.sample
+        detectors = [sample.pnn_labels[i] for i in sample.fluoro_indices]
+        detectors.sort(key=lambda c: (not c.endswith("-A"), c))
+        for c in detectors:
+            marker = sample.pns_labels[sample.pnn_labels.index(c)]
+            self.summary_detector.addItem(f"{marker or c} · {c}" if marker else c, c)
+        preferred = recipe.get("channel_roles", {}).get("gfp", {}).get("detector")
+        if not preferred and "FL5-A" in detectors:
+            preferred = "FL5-A"
+        if preferred in detectors:
+            self.summary_detector.setCurrentIndex(detectors.index(preferred))
+        self.summary_statistic = W.QComboBox()
+        self.summary_statistic.addItems(["MFI (arithmetic mean)", "Median fluorescence"])
+        for title, control in [
+            ("Population", self.summary_population),
+            ("Detector", self.summary_detector),
+            ("Statistic", self.summary_statistic),
+        ]:
+            summary_layout.addRow(title, control)
+            control.currentIndexChanged.connect(self.request_gallery)
+        summary_layout.addRow(button("Export summary CSV…", self.export_sample_summary))
+        gallery_layout.addWidget(self.summary_controls)
         self.plate_metric = W.QComboBox()
         self.plate_metric.addItems(["% of parent", "Event count", "Median signal (first detector)"])
         self.plate_metric.currentIndexChanged.connect(self.request_gallery)
@@ -219,8 +258,16 @@ class ScreenWindow(GateWindow):
                 combo.setCurrentText(display[key])
         self.point_size.setValue(display.get("point_size", 8))
         self.opacity.setValue(display.get("opacity", 65))
+        self.summary_population.setCurrentText(
+            display.get("summary_population", self.summary_population.currentText())
+        )
+        detector_index = self.summary_detector.findData(display.get("summary_detector"))
+        if detector_index >= 0:
+            self.summary_detector.setCurrentIndex(detector_index)
+        self.summary_statistic.setCurrentText(display.get("summary_statistic", "MFI (arithmetic mean)"))
+        self.full_scatter.setChecked(display.get("full_scatter", False))
         self.ready = True
-        self.gallery_mode.setCurrentText(display.get("gallery_mode", "All populations"))
+        self.gallery_mode.setCurrentText(display.get("gallery_mode", "Sample MFI"))
         self.focus_plot.setChecked(display.get("focus_plot", False))
         self.show_gate(self.active_name)
 
@@ -527,6 +574,17 @@ class ScreenWindow(GateWindow):
         show_points = len(gate["channels"]) == 2 and self.plot_type.currentText() == "Scatter"
         self.point_size.setVisible(show_points)
         self.point_size_label.setVisible(show_points)
+        if len(gate["channels"]) == 2:
+            arrays = []
+            for record in self.plot_records():
+                prepared, masks = self.session.get(record, self.state.recipe)
+                arrays.append(prepared.transformed.loc[masks[gate["parent"]], gate["channels"]].to_numpy())
+            limits = scatter_limits(
+                np.concatenate(arrays) if arrays else [], gate["channels"], self.full_scatter.isChecked()
+            )
+            if limits is not None:
+                self.ax.set_xlim(limits[0][0], limits[1][0])
+                self.ax.set_ylim(limits[0][1], limits[1][1])
         apply_axes(self.ax, gate["channels"], self.state.recipe, modes)
         self.picked = {}
         for other in self.state.active_recipe["gates"]:
@@ -610,7 +668,12 @@ class ScreenWindow(GateWindow):
             return
         self.gallery_figure.clear()
         self.gallery_axes.clear()
+        summary = self.gallery_mode.currentText() == "Sample MFI"
+        self.summary_controls.setVisible(summary)
         self.plate_metric.setVisible(self.gallery_mode.currentIndex() == 2)
+        if summary:
+            self.draw_sample_summary()
+            return
         if self.gallery_mode.currentIndex() == 2:
             self.draw_plates()
             return
@@ -636,7 +699,10 @@ class ScreenWindow(GateWindow):
                 prepared, masks = self.session.get(r, self.state.recipe)
                 values = prepared.transformed.loc[masks[active["parent"]], active["channels"]].to_numpy()
                 if len(values):
-                    limits.append((values.min(axis=0), values.max(axis=0)))
+                    limits.append(
+                        scatter_limits(values, active["channels"], self.full_scatter.isChecked())
+                        or (values.min(axis=0), values.max(axis=0))
+                    )
             if limits:
                 shared_limits = (
                     np.min([v[0] for v in limits], axis=0),
@@ -666,6 +732,10 @@ class ScreenWindow(GateWindow):
                     fontsize=8,
                     color="#922038" if gate["name"] == self.active_name else "#141414",
                 )
+                individual_limits = scatter_limits(data, gate["channels"], self.full_scatter.isChecked())
+                if individual_limits is not None and not shared_limits:
+                    ax.set_xlim(individual_limits[0][0], individual_limits[1][0])
+                    ax.set_ylim(individual_limits[0][1], individual_limits[1][1])
                 if shared_limits:
                     for dim, setter in enumerate([ax.set_xlim, ax.set_ylim][: len(gate["channels"])]):
                         lo, hi = shared_limits[0][dim], shared_limits[1][dim]
@@ -678,6 +748,71 @@ class ScreenWindow(GateWindow):
             except (ValueError, OSError, KeyError) as error:
                 ax.text(0.05, 0.5, str(error), transform=ax.transAxes, wrap=True, fontsize=8)
         self.gallery_figure.tight_layout(pad=0.8, h_pad=1.2, w_pad=0.8)
+        self.gallery_canvas.draw_idle()
+
+    def sample_summary_table(self):
+        from .sample_summary import signal_summary
+
+        return signal_summary(
+            self.selected_records(),
+            self.session,
+            self.state.recipe,
+            self.summary_population.currentText(),
+            self.summary_detector.currentData(),
+            "mean" if self.summary_statistic.currentIndex() == 0 else "median",
+        )
+
+    def export_sample_summary(self):
+        path, _ = W.QFileDialog.getSaveFileName(
+            self, "Export sample summary", "sample-summary.csv", "CSV (*.csv)"
+        )
+        if path:
+            try:
+                self.sample_summary_table().to_csv(path, index=False)
+                self.message.setText(f"Sample summary saved: {path}")
+            except (ValueError, OSError, KeyError) as error:
+                self.message.setText(str(error))
+
+    def draw_sample_summary(self):
+        names = ["root"] + [g["name"] for g in self.state.recipe["gates"]]
+        current = self.summary_population.currentText()
+        if names != [self.summary_population.itemText(i) for i in range(self.summary_population.count())]:
+            self.summary_population.blockSignals(True)
+            self.summary_population.clear()
+            self.summary_population.addItems(names)
+            self.summary_population.setCurrentText(current if current in names else "root")
+            self.summary_population.blockSignals(False)
+        table = self.sample_summary_table()
+        # Stable group ordering retains acquisition/sample order within each group.
+        order = list(dict.fromkeys(table["group"]))
+        table = table.assign(_group=table["group"].map({g: i for i, g in enumerate(order)})).sort_values(
+            "_group", kind="stable"
+        )
+        capacity = max(4, min(14, self.gallery_canvas.height() // 38))
+        self.gallery_page.setMaximum(max(1, (len(table) + capacity - 1) // capacity))
+        start = (self.gallery_page.value() - 1) * capacity
+        shown = table.iloc[start : start + capacity]
+        ax = self.gallery_figure.add_subplot(111)
+        y = np.arange(len(shown))
+        ax.barh(y, shown.value, color=shown.color)
+        labels = [
+            str(r.get("condition") or r.get("label") or r["sample_id"]) for r in shown.to_dict("records")
+        ]
+        import textwrap
+
+        ax.set_yticks(y, [textwrap.fill(t, 23) for t in labels], fontsize=8)
+        ax.invert_yaxis()
+        ax.set_xlabel(
+            self.summary_statistic.currentText() + "\n" + str(self.summary_detector.currentData()), fontsize=9
+        )
+        ax.set_title(self.summary_population.currentText(), fontsize=10)
+        for i, row in enumerate(shown.itertuples()):
+            if not np.isfinite(row.value):
+                ax.text(0, i, "No events", va="center", fontsize=8)
+        ax.grid(axis="y", visible=False)
+        self.gallery_axes[ax] = ("bars", shown.sample_id.tolist())
+        self.gallery_range.setText(f"{start + 1}–{start + len(shown)} of {len(table)} samples")
+        self.gallery_figure.tight_layout(pad=1)
         self.gallery_canvas.draw_idle()
 
     def draw_plates(self):
@@ -698,7 +833,7 @@ class ScreenWindow(GateWindow):
                 ax.text(
                     0.5,
                     0.5,
-                    "Plate map needs valid plate/well metadata (A01–P24).",
+                    "No well assignment for this sample. Add plate and well columns (A01–P24) to the sample sheet, or choose Sample MFI to compare labeled conditions.",
                     transform=ax.transAxes,
                     ha="center",
                     wrap=True,
@@ -750,6 +885,11 @@ class ScreenWindow(GateWindow):
         selected = self.gallery_axes.get(event.inaxes)
         if selected:
             kind, value = selected
+            if kind == "bars":
+                if event.ydata is None or not 0 <= round(event.ydata) < len(value):
+                    return
+                value = value[round(event.ydata)]
+                kind = "sample"
             if kind == "plate":
                 if event.xdata is None or event.ydata is None:
                     return
@@ -816,6 +956,10 @@ class ScreenWindow(GateWindow):
                 "pinned_samples": sorted(self.pinned),
                 "focus_plot": self.focus_plot.isChecked(),
                 "gallery_mode": self.gallery_mode.currentText(),
+                "summary_population": self.summary_population.currentText(),
+                "summary_detector": self.summary_detector.currentData(),
+                "summary_statistic": self.summary_statistic.currentText(),
+                "full_scatter": self.full_scatter.isChecked(),
                 "plot_type": self.plot_type.currentText(),
                 "point_size": self.point_size.value(),
                 "opacity": self.opacity.value(),

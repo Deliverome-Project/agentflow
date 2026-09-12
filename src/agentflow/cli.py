@@ -10,13 +10,22 @@ import numpy as np
 from .batch import run_batch
 from .compensation import control_diagnostics, estimate_controls, load_matrix, matrix_diagnostic, save_matrix
 from .engine import build_strategy, evaluate, flowkit, load_recipe, prepare, validate
-from .workflow import inspect_sample, scaffold
+from .workflow import default_transform, inspect_sample, scaffold
 
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
     commands.add_parser("gui", help="Open or import an analysis through the desktop launcher")
+    summary = commands.add_parser(
+        "sample-summary", help="Export per-sample fluorescence using sample-sheet labels/groups"
+    )
+    summary.add_argument("samples")
+    summary.add_argument("--recipe", required=True)
+    summary.add_argument("--population", default="root")
+    summary.add_argument("--detector", required=True)
+    summary.add_argument("--statistic", choices=["mean", "median"], default="mean")
+    summary.add_argument("--out", required=True)
     inspect = commands.add_parser("inspect", help="Show acquired detectors, marker names and compensation")
     inspect.add_argument("sample")
     init = commands.add_parser("init", help="Create a draft workflow and sample sheet")
@@ -113,7 +122,9 @@ def open_editor(args):
             raise ValueError("New gates need --x and, for 2D gates, --y")
         channels = [args.x] if args.kind == "range" else [args.x, args.y]
         for channel in channels:
-            recipe["transforms"].setdefault(channel, {"kind": "linear"})
+            recipe["transforms"].setdefault(
+                channel, default_transform(flowkit().Sample(str(sample_path)), channel)
+            )
         prepared = prepare(sample_path, recipe)
         masks = evaluate(prepared, recipe)
         if args.parent not in masks or not masks[args.parent].any():
@@ -174,6 +185,19 @@ def main(argv=None):
                 run_cached(args.samples, args.recipe, args.out, args.cache)
             else:
                 run_batch(args.samples, args.recipe, args.out)
+        elif args.command == "sample-summary":
+            from .sample_summary import signal_summary
+            from .samples import SampleSession, read_samples
+
+            records = read_samples(args.samples)
+            signal_summary(
+                records,
+                SampleSession(records),
+                load_recipe(args.recipe),
+                args.population,
+                args.detector,
+                args.statistic,
+            ).to_csv(args.out, index=False)
         elif args.command == "screen":
             from .screening import screen_report
 

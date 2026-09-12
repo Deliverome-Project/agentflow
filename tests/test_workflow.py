@@ -197,3 +197,16 @@ def test_editor_resize_events_preserve_range_and_pending_panels(demo, tmp_path):
     editor.fig.canvas.draw()
     assert editor.gate["bounds"] == next(g for g in recipe["gates"] if g["name"] == "gfp")["bounds"]
     plt.close(editor.fig)
+
+
+def test_new_reporter_uses_instrument_logicle_without_rewriting_existing(demo, tmp_path):
+    sample = fk.Sample(str(demo / "sample-1.fcs"))
+    recipe = scaffold(demo / "sample-1.fcs", tmp_path / "logicle-default", compensation="none")
+    updated = add_reporter(recipe, sample, "gfp", "BL1-A")
+    spec = updated["transforms"]["BL1-A"]
+    assert spec["kind"] == "logicle"
+    assert spec["parameters"]["param_t"] == sample.channels.iloc[sample.pnn_labels.index("BL1-A")]["pnr"]
+    recipe["transforms"]["BL1-A"] = {"kind": "asinh", "cofactor": 42}
+    assert (
+        add_reporter(recipe, sample, "gfp", "BL1-A")["transforms"]["BL1-A"] == recipe["transforms"]["BL1-A"]
+    )

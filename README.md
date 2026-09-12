@@ -232,3 +232,30 @@ and YAML interfaces. It distinguishes current functionality from planned work.
 
 See [saved analyses and metadata](docs/saved-analysis.md) for recipe versus snapshot
 files, review status, instrument provenance, histogram defaults and reporter ratios.
+
+### Sample summaries and default axes
+
+New reporter/viability assignments use **logicle** (T from the detector's FCS range,
+W=0.5, M=4.5, A=0); these are editable starting parameters, not fitted controls.
+Existing recipes retain their explicit transforms and gate coordinates.
+
+The multi-sample viewer defaults to **Sample MFI**: choose a population, detector,
+and arithmetic mean or median. It calculates signal before display transforms,
+after the recipe's compensation if present. MFI here means arithmetic mean,
+not FlowJo's graph-space geometric mean. Bars retain individual samples (no
+replicate averaging or inferred error bars), use `condition` labels and `group`
+colors from the sample sheet, and can be clicked to select a sample. Notion-derived
+annotations enter through the existing sample-sheet import; the viewer does not
+query Notion or guess biological identities. Export the same table headlessly:
+
+```bash
+agentflow sample-summary samples.csv --recipe gates.yaml --population live \
+  --detector FL5-A --statistic mean --out sample-summary.csv
+```
+
+Plate maps need explicit `plate` and `well` columns. Missing assignments are
+explained in the viewer; filename suffixes are never assumed to be culture wells.
+FSC/SSC views initially show the central 99% plus margin to prevent rare extreme
+events from compressing the cells. **Plot settings → Full scatter range** restores
+all events. This is a display crop only: every event remains in gate calculations
+and exports. The selected summary and scatter-view settings are saved with YAML.

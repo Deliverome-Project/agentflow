@@ -218,3 +218,18 @@ def draw_boundary(ax, gate, color="#e2655e", linewidth=1.7, pickable=False, reci
     return ax.plot(
         dense[:, 0], dense[:, 1], color=color, linewidth=linewidth, picker=6 if pickable else False
     )
+
+
+def scatter_limits(data, channels, full_range=False):
+    """Display-only scatter limits; never filter the analytical event array."""
+    data = np.asarray(data)
+    if data.ndim != 2 or not len(data) or len(channels) != 2:
+        return None
+    if not all(c.startswith(("FSC-", "SSC-")) for c in channels):
+        return None
+    data = data[np.isfinite(data).all(axis=1)]
+    if not len(data):
+        return None
+    low, high = np.quantile(data, [0, 1] if full_range else [0.005, 0.995], axis=0)
+    margin = np.maximum((high - low) * 0.08, 1)
+    return low - margin, high + margin

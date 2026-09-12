@@ -58,6 +58,7 @@ def find_gallery(window, target):
 
 
 def test_gallery_detector_labels_selection_and_sample_comparison(window):
+    window.gallery_mode.setCurrentText("All populations")
     assert len(gallery_items(window)) == 6
     assert all(ax.get_xlabel() for ax in window.gallery_axes)
     ax = find_gallery(window, ("gate", "gfp"))
@@ -608,6 +609,7 @@ def test_launcher_opens_yaml_and_rejects_ambiguous_recipe(window, demo, tmp_path
 
 @pytest.mark.parametrize("size", [(980, 620), (1280, 720), (1440, 900)])
 def test_counts_and_gallery_fit_without_scrolling(window, size):
+    window.gallery_mode.setCurrentText("All populations")
     window.resize(*size)
     window.show_gate("live")
     W.QApplication.processEvents()
@@ -656,8 +658,8 @@ def test_dummy_histograms_open_between_and_scatter_exploration_is_read_only(wind
     dialog.x.setCurrentText("BL1-A")
     dialog.y.setCurrentText("RL1-A")
     dialog.style.setCurrentText("Density")
-    assert dialog.ax.get_xlabel() == "BL1-A · asinh"
-    assert dialog.ax.get_ylabel() == "RL1-A · asinh"
+    assert dialog.ax.get_xlabel() == "BL1-A · logicle"
+    assert dialog.ax.get_ylabel() == "RL1-A · logicle"
     assert f"{window.state.counts()['live']:,}" in dialog.count.text()
     assert window.state.recipe == before
 
@@ -747,3 +749,38 @@ def test_delete_population_cascade_cancel_undo_and_save(window, monkeypatch):
     window.state.sample_scope = False
     with pytest.raises(ValueError, match="at least one"):
         window.state.delete_population("cells")
+
+
+def test_sample_mfi_default_uses_metadata_and_untransformed_signal(window):
+    assert window.gallery_mode.currentText() == "Sample MFI"
+    window.summary_detector.setCurrentIndex(0)
+    table = window.sample_summary_table()
+    assert len(table) == len(window.records)
+    first = table.iloc[0]
+    prepared, masks = window.session.get(window.records[0], window.state.recipe)
+    expected = prepared.values.loc[masks[first.population], first.detector].mean()
+    assert first.value == pytest.approx(expected)
+    assert first.event_count == int(masks[first.population].sum())
+    window.summary_statistic.setCurrentIndex(1)
+    assert window.sample_summary_table().iloc[0].value == pytest.approx(
+        prepared.values.loc[masks[first.population], first.detector].median()
+    )
+    window.update_gallery()
+    ax = next(iter(window.gallery_axes))
+    sid = window.gallery_axes[ax][1][1]
+    window.select_gallery(SimpleNamespace(inaxes=ax, ydata=1))
+    assert window.record["sample_id"] == sid
+
+
+def test_scatter_limits_resist_outliers_without_changing_data():
+    from agentflow.plot_views import scatter_limits
+
+    data = np.column_stack([np.arange(1000), np.arange(1000)]).astype(float)
+    data[-1] = 1e8
+    original = data.copy()
+    central = scatter_limits(data, ["FSC-A", "SSC-A"])
+    full = scatter_limits(data, ["FSC-A", "SSC-A"], full_range=True)
+    assert central[1].max() < 2000
+    assert full[1].min() > 1e8
+    np.testing.assert_array_equal(data, original)
+    assert scatter_limits(data, ["FL1-A", "SSC-A"]) is None

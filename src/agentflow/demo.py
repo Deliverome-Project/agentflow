@@ -8,6 +8,7 @@ import flowio
 import numpy as np
 
 from .compensation import control_diagnostics, estimate_controls, matrix_diagnostic, save_matrix
+from .engine import make_transform
 from .workflow import scaffold
 
 
@@ -91,12 +92,9 @@ def make_demo(output):
     recipe = json.loads(recipe_path.read_text())
     for gate in recipe["gates"]:
         if gate["name"] in ("live", "gfp", "mscarlet", "cy5"):
-            threshold = float(np.arcsinh(5000 / 150))
-            gate["bounds"] = (
-                [float(np.arcsinh(-1000 / 150)), threshold]
-                if gate["name"] == "live"
-                else [threshold, float(np.arcsinh(100000 / 150))]
-            )
+            transform = make_transform(recipe["transforms"][gate["channels"][0]])
+            low, threshold, high = transform.apply(np.array([-1000.0, 5000.0, 100000.0])).tolist()
+            gate["bounds"] = [low, threshold] if gate["name"] == "live" else [threshold, high]
             gate["note"] = (
                 "DUMMY synthetic dye / detector assignment and threshold; for interaction practice only."
             )
