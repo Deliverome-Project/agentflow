@@ -1,5 +1,7 @@
 """Acquisition metadata checks in the same signal units used by FlowKit."""
 
+import re
+
 
 def upper_limits(sample):
     """Convert the recorded upper bin to FlowKit's preprocessed, uncompensated units."""
@@ -21,6 +23,12 @@ def upper_limits(sample):
 def acquisition_settings(sample, detectors):
     metadata = {k.lower(): v for k, v in sample.get_metadata().items()}
     settings = {}
+    vendor_channels = {}
+    if "cytoflex" in str(metadata.get("cyt", "")).lower():
+        for key, value in metadata.items():
+            match = re.fullmatch(r"ch(\d+)id", key)
+            if match:
+                vendor_channels.setdefault(str(value), []).append("ch" + match[1])
     for detector in detectors:
         index = sample.pnn_labels.index(detector)
         row = sample.channels.iloc[index]
@@ -30,8 +38,20 @@ def acquisition_settings(sample, detectors):
                 voltage = float(voltage)
             except ValueError:
                 voltage = str(voltage).strip() or None
+        gain_key = f"p{index + 1}g"
+        gain = metadata.get(gain_key)
+        gain = float(gain) if gain is not None and str(gain).strip() else None
+        # Channel IDs, not numeric ordering, connect vendor channels to FCS parameters.
+        base = re.sub(r"-(A|H|W)$", "", detector)
+        vendor = vendor_channels.get(base, [])
+        vendor_key = vendor[0] + "gain" if len(vendor) == 1 else None
+        vendor_gain = metadata.get(vendor_key) if vendor_key else None
         settings[detector] = {
-            "gain": float(row["png"]),
+            "gain": gain,
+            "gain_source": f"$P{index + 1}G" if gain is not None else None,
+            "preprocessing_gain": float(row["png"]),
+            "detector_gain": float(vendor_gain) if vendor_gain is not None else None,
+            "detector_gain_source": vendor_key if vendor_gain is not None else None,
             "range": float(row["pnr"]),
             "amplification": list(row["pne"]),
             "voltage": voltage,
@@ -46,7 +66,9 @@ def check_acquisition(reference, current):
     for detector, expected in reference["detectors"].items():
         actual = current["detectors"][detector]
         for setting, value in expected.items():
-            if value is not None and value != actual[setting]:
+            if setting.endswith("_source"):
+                continue
+            if value is not None and value != actual.get(setting):
                 raise ValueError(f"{detector}: compensation acquisition {setting} differs or is missing")
 
 
@@ -61,7 +83,16 @@ def instrument_provenance(sample):
         "acquisition_date": metadata.get("date"),
         "start_time": metadata.get("btim"),
         "end_time": metadata.get("etim"),
-        "acquisition_software": metadata.get("sys"),
+        "acquisition_system": metadata.get("sys"),
+        "acquisition_software": metadata.get("creator"),
+        "software_hint": "CytExpert (vendor keyword; version unknown)"
+        if str(metadata.get("cytexpertfil", "")).lower() == "true"
+        else None,
+        "gain_definitions": {
+            "gain": "Reported FCS $PnG; null if absent. Not interchangeable with vendor detector gain.",
+            "preprocessing_gain": "Gain factor used by FlowKit, including its default when not reported.",
+            "detector_gain": "Vendor gain matched by explicit CHnID; not applied again to event values.",
+        },
         "recorded_filename": metadata.get("fil"),
         "event_count": sample.event_count,
         "detectors": settings["detectors"],

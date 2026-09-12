@@ -276,3 +276,20 @@ previous review state. Descendants remain unreviewed after a parent edit until
 separately edited or marked reviewed. A sample-specific edit reviews only that
 sample's exception. Saving alone does not approve untouched or generated gates;
 compensation changes still invalidate affected reviews.
+
+### Instrument metadata meanings
+
+`detectors[*].gain` is the reported FCS `$PnG` factor, not necessarily the gain
+shown in the acquisition UI. Missing `$PnG` stays null; `preprocessing_gain`
+separately records the factor FlowKit uses, including defaults. On CytoFLEX,
+`detector_gain` is read from vendor `CHnGAIN` and matched to area/height parameters
+by explicit `CHnID`, never by assuming channel and parameter numbers coincide.
+Gain source keywords are retained. Vendor gain is descriptive; it is not applied
+a second time to event intensities. Newly estimated compensation records include
+these settings so differences in vendor detector gains are checked too.
+
+`$SYS` is recorded as `acquisition_system`. `acquisition_software` comes from
+`$CREATOR` when present; a CytExpert vendor flag is only a software hint, with no
+invented version. Original FCS keywords remain available for auditing. These are
+instrument-reported values, not independent calibration or acquisition-log verification.
+Older saved runs retain their original field interpretations until explicitly rerun.
