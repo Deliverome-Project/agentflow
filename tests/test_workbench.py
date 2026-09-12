@@ -784,3 +784,44 @@ def test_scatter_limits_resist_outliers_without_changing_data():
     assert full[1].min() > 1e8
     np.testing.assert_array_equal(data, original)
     assert scatter_limits(data, ["FL1-A", "SSC-A"]) is None
+
+
+def test_summary_shows_30_samples_and_refreshes_after_gate_edit(window):
+    # Distinct sample IDs may legitimately refer to reused synthetic data.
+    window.records = [
+        dict(window.records[0], sample_id=f"S{i}", condition=f"Condition {i}") for i in range(30)
+    ]
+    window.record = window.records[0]
+    window.show_gate("gfp")
+    window.update_gallery()
+    assert window.summary_population.currentText() == "gfp"
+    ax = next(iter(window.gallery_axes))
+    assert len(ax.patches) == 30
+    assert window.gallery_page.maximum() == 1
+    before = window.sample_summary_table()
+    gate = window.state.gate("gfp")
+    prepared, masks = window.session.get(window.records[0], window.state.recipe)
+    values = prepared.transformed.loc[masks["gfp"], gate["channels"][0]]
+    # Tightening the gate must invalidate cached memberships and change the actual bars.
+    bounds = [float(values.quantile(0.8)), gate["bounds"][1]]
+    window.perform(lambda: window.state.geometry("gfp", "bounds", bounds), redraw=False)
+    W.QApplication.processEvents()
+    window.update_gallery()
+    after = window.sample_summary_table()
+    assert (after.event_count < before.event_count).all()
+    assert not np.allclose(after.value, before.value)
+    ax = next(iter(window.gallery_axes))
+    np.testing.assert_allclose([bar.get_width() for bar in ax.patches], after.value)
+    window.summary_follow.setChecked(False)
+    window.summary_population.setCurrentText("live")
+    window.show_gate("cy5")
+    window.update_gallery()
+    assert window.summary_population.currentText() == "live"
+
+
+def test_comparison_titles_include_condition_and_file(window):
+    window.records[0]["condition"] = "Accutase 37C (5 min)"
+    window.gallery_mode.setCurrentText("Compare samples")
+    ax = find_gallery(window, ("sample", window.records[0]["sample_id"]))
+    assert "Accutase 37C (5 min)" in ax.get_title()
+    assert window.records[0]["sample_id"] in ax.get_title()

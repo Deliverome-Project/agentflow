@@ -177,6 +177,9 @@ class ScreenWindow(GateWindow):
         self.gallery_mode.currentIndexChanged.connect(self.request_gallery)
         self.gallery_mode.setCurrentIndex(4)
         gallery_layout.addWidget(self.gallery_mode)
+        self.summary_settings = W.QCheckBox("Summary settings")
+        self.summary_settings.toggled.connect(self.request_gallery)
+        gallery_layout.addWidget(self.summary_settings)
         self.summary_controls = W.QWidget()
         summary_layout = W.QFormLayout(self.summary_controls)
         summary_layout.setContentsMargins(0, 0, 0, 0)
@@ -184,6 +187,10 @@ class ScreenWindow(GateWindow):
         names = ["root"] + [g["name"] for g in recipe["gates"]]
         self.summary_population.addItems(names)
         self.summary_population.setCurrentText("live" if "live" in names else "root")
+        self.summary_follow = W.QCheckBox("Follow selected population")
+        self.summary_follow.setChecked(True)
+        self.summary_follow.toggled.connect(self.request_gallery)
+        summary_layout.addRow(self.summary_follow)
         self.summary_detector = W.QComboBox()
         sample = self.state.prepared.sample
         detectors = [sample.pnn_labels[i] for i in sample.fluoro_indices]
@@ -265,6 +272,7 @@ class ScreenWindow(GateWindow):
         if detector_index >= 0:
             self.summary_detector.setCurrentIndex(detector_index)
         self.summary_statistic.setCurrentText(display.get("summary_statistic", "MFI (arithmetic mean)"))
+        self.summary_follow.setChecked(display.get("summary_follow", True))
         self.full_scatter.setChecked(display.get("full_scatter", False))
         self.ready = True
         self.gallery_mode.setCurrentText(display.get("gallery_mode", "Sample MFI"))
@@ -669,7 +677,8 @@ class ScreenWindow(GateWindow):
         self.gallery_figure.clear()
         self.gallery_axes.clear()
         summary = self.gallery_mode.currentText() == "Sample MFI"
-        self.summary_controls.setVisible(summary)
+        self.summary_settings.setVisible(summary)
+        self.summary_controls.setVisible(summary and self.summary_settings.isChecked())
         self.plate_metric.setVisible(self.gallery_mode.currentIndex() == 2)
         if summary:
             self.draw_sample_summary()
@@ -726,10 +735,14 @@ class ScreenWindow(GateWindow):
                 draw_boundary(ax, gate, recipe=self.state.recipe)
                 count = int(masks[gate["name"]].sum())
                 total = int(masks[gate["parent"]].sum())
-                title = record["sample_id"] if compare else TITLES.get(gate["name"], gate["name"])
+                title = (
+                    f"{record.get('condition') or record.get('label') or record['group']}\n{record['sample_id']}"
+                    if compare
+                    else TITLES.get(gate["name"], gate["name"])
+                )
                 ax.set_title(
-                    f"{title}\n{count:,} / {total:,}",
-                    fontsize=8,
+                    f"{title}{' · ' if compare else chr(10)}{count:,} / {total:,}",
+                    fontsize=7 if compare else 8,
                     color="#922038" if gate["name"] == self.active_name else "#141414",
                 )
                 individual_limits = scatter_limits(data, gate["channels"], self.full_scatter.isChecked())
@@ -782,13 +795,18 @@ class ScreenWindow(GateWindow):
             self.summary_population.addItems(names)
             self.summary_population.setCurrentText(current if current in names else "root")
             self.summary_population.blockSignals(False)
+        self.summary_population.setEnabled(not self.summary_follow.isChecked())
+        if self.summary_follow.isChecked() and self.active_name in names:
+            self.summary_population.blockSignals(True)
+            self.summary_population.setCurrentText(self.active_name)
+            self.summary_population.blockSignals(False)
         table = self.sample_summary_table()
         # Stable group ordering retains acquisition/sample order within each group.
         order = list(dict.fromkeys(table["group"]))
         table = table.assign(_group=table["group"].map({g: i for i, g in enumerate(order)})).sort_values(
             "_group", kind="stable"
         )
-        capacity = max(4, min(14, self.gallery_canvas.height() // 38))
+        capacity = 30
         self.gallery_page.setMaximum(max(1, (len(table) + capacity - 1) // capacity))
         start = (self.gallery_page.value() - 1) * capacity
         shown = table.iloc[start : start + capacity]
@@ -798,9 +816,9 @@ class ScreenWindow(GateWindow):
         labels = [
             str(r.get("condition") or r.get("label") or r["sample_id"]) for r in shown.to_dict("records")
         ]
-        import textwrap
-
-        ax.set_yticks(y, [textwrap.fill(t, 23) for t in labels], fontsize=8)
+        # One line per sample keeps up to 30 bars visible without pagination.
+        label_size = max(5.5, min(8, (self.gallery_canvas.height() - 80) / max(len(shown), 1) * 0.55))
+        ax.set_yticks(y, labels, fontsize=label_size)
         ax.invert_yaxis()
         ax.set_xlabel(
             self.summary_statistic.currentText() + "\n" + str(self.summary_detector.currentData()), fontsize=9
@@ -811,7 +829,12 @@ class ScreenWindow(GateWindow):
                 ax.text(0, i, "No events", va="center", fontsize=8)
         ax.grid(axis="y", visible=False)
         self.gallery_axes[ax] = ("bars", shown.sample_id.tolist())
-        self.gallery_range.setText(f"{start + 1}–{start + len(shown)} of {len(table)} samples")
+        self.gallery_range.setText(
+            f"{start + 1}–{start + len(shown)} of {len(table)} · {'follows selection' if self.summary_follow.isChecked() else 'fixed population'}"
+        )
+        self.gallery_range.setToolTip(
+            "Values follow the population named above. Editing a child does not change its parent population's MFI."
+        )
         self.gallery_figure.tight_layout(pad=1)
         self.gallery_canvas.draw_idle()
 
@@ -957,6 +980,7 @@ class ScreenWindow(GateWindow):
                 "focus_plot": self.focus_plot.isChecked(),
                 "gallery_mode": self.gallery_mode.currentText(),
                 "summary_population": self.summary_population.currentText(),
+                "summary_follow": self.summary_follow.isChecked(),
                 "summary_detector": self.summary_detector.currentData(),
                 "summary_statistic": self.summary_statistic.currentText(),
                 "full_scatter": self.full_scatter.isChecked(),

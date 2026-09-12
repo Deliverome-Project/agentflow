@@ -259,3 +259,10 @@ FSC/SSC views initially show the central 99% plus margin to prevent rare extreme
 events from compressing the cells. **Plot settings → Full scatter range** restores
 all events. This is a display crop only: every event remains in gate calculations
 and exports. The selected summary and scatter-view settings are saved with YAML.
+
+Sample MFI shows up to **30 samples per page**, including all 14 S2E15 samples
+at once. By default it follows the selected population and recomputes after a gate
+edit is released. Uncheck **Follow selected population** to keep a fixed population:
+editing a child gate does not change its parent's mean or median. Compare-sample
+plot titles include both condition and sample ID. The follow/fixed preference is
+saved in the recipe alongside the summary detector and statistic.
