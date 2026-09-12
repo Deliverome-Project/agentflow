@@ -1,8 +1,9 @@
 # Public release review
 
-Proposed license for original Agentflow code: MIT. Author and maintainer:
+License for original Agentflow code: [MIT](../LICENSE). Author and maintainer:
 Becca Carlson. This designation excludes bundled third-party components.
-A top-level license has not yet been added. Preserve upstream notices unchanged.
+The top-level license excludes bundled third-party components; preserve their
+licenses and copyright notices unchanged.
 
 Before changing repository visibility:
 
@@ -40,6 +41,9 @@ Candidate revision: `4dc985d` (development branch; no public release).
   all historical narrative or hosting logs are suitable for public disclosure.
 - No GitHub releases or uploaded Actions artifacts existed at inspection.
 
-Pending: resolve or omit legacy compatibility code, finalize the original-code
-license, select the distribution destination, and complete public-history review.
-No release or visibility change has been performed.
+A private GitHub evaluation release v0.7.0 was subsequently created. That
+immutable release predates the original-code MIT license addition. Its files and
+tag have not been replaced.
+
+Pending for public distribution: resolve or omit legacy compatibility code and
+complete public-history review. Repository visibility remains private.

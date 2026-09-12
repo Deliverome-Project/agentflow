@@ -210,6 +210,8 @@ FlowKit retains Scott White's copyright and its accompanying BSD 3-Clause licens
 Fonts and standard XML schemas retain their own terms and copyright holders.
 No upstream endorsement is implied. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
-The proposed license for original Agentflow code is MIT. Public release is pending
-the [release review](docs/release-review.md); this proposal does not relicense
-bundled components or grant a new license to the original code yet.
+Original Agentflow code and documentation are licensed under the
+[MIT License](LICENSE), copyright 2026 Becca Carlson. This grant excludes
+bundled third-party code, schemas and fonts, which retain their own licenses
+and notices. Public distribution of the complete bundle remains subject to the
+outstanding [release review](docs/release-review.md).
