@@ -6,12 +6,15 @@ from pathlib import Path
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
+from matplotlib.ticker import FixedLocator, FuncFormatter
 from PySide6 import QtGui
 from PySide6 import QtWidgets as W
 
 from . import flowkit
 from .control_review import export_control_review, resolve_config
 from .desktop import button, label
+from .engine import make_transform
+from .workflow import default_transform
 
 
 class ControlFilenameDelegate(W.QStyledItemDelegate):
@@ -302,11 +305,27 @@ class CompensationWizard(W.QDialog):
                 data = data[evaluate(prepare(sample, recipe), recipe)[self.extra["cleanup_gate"]]]
             self.figure.clear()
             self.ax = self.figure.add_subplot(111)
-            # Equal bins in asinh space retain visibility around zero, including negative events.
-            scaled = np.arcsinh(data / 150)
+            spec = default_transform(sample, detector)
+            transform = make_transform(spec)
+            if transform is None:
+                raise ValueError("Select an acquired fluorescence detector for compensation")
+            # Bin in logicle space while retaining raw axis coordinates for clicks and thresholds.
+            scaled = transform.apply(data)
             counts, edges = np.histogram(scaled, bins=100)
-            self.ax.stairs(counts, 150 * np.sinh(edges), color="#6f0835", fill=True, alpha=0.65)
-            self.ax.set_xscale("asinh", linear_width=150)
+            raw_edges = transform.inverse(edges)
+            self.ax.stairs(counts, raw_edges, color="#6f0835", fill=True, alpha=0.65)
+            self.ax.set_xscale("function", functions=(transform.apply, transform.inverse))
+            ticks = np.r_[-(10.0 ** np.arange(7, -1, -1)), 0, 10.0 ** np.arange(0, 8)]
+            ticks = ticks[(ticks >= raw_edges[0]) & (ticks <= raw_edges[-1])]
+            # Keep labels separated in the central linear region, preferring zero.
+            chosen = []
+            span = edges[-1] - edges[0]
+            for tick in sorted(ticks, key=abs):
+                position = transform.apply(np.array([tick]))[0]
+                if all(abs(position - p) > span * 0.09 for _, p in chosen):
+                    chosen.append((tick, position))
+            self.ax.xaxis.set_major_locator(FixedLocator(sorted(t for t, _ in chosen)))
+            self.ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x:g}"))
             counts_text = []
             for value, color, title, below in [
                 (low, "#3d6b60", "Negative", True),
@@ -317,7 +336,7 @@ class CompensationWizard(W.QDialog):
                     self.ax.axvline(value, color=color, linewidth=2, label=title)
                     count = int(np.count_nonzero(data <= value if below else data >= value))
                     counts_text.append(f"{title}: {count:,}")
-            self.ax.set(xlabel=f"{detector} · raw signal · asinh display", ylabel="Events per display bin")
+            self.ax.set(xlabel=f"{detector} · raw signal · logicle display", ylabel="Events per display bin")
             if counts_text:
                 self.ax.legend(frameon=False)
             self.canvas.draw_idle()

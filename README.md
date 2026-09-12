@@ -75,8 +75,8 @@ uv run agentflow run local-examples/synthetic/workflow/samples.csv \
   --out local-examples/synthetic/run-01
 ```
 
-Open `local-examples/synthetic/run-01/report.html` to inspect the results. Keep the
-report together with its generated figures and linked files.
+Open `local-examples/synthetic/run-01/report.html` to inspect the results. Plot images are embedded, so the HTML can be viewed on its own. Keep the complete
+run folder to open linked tables, gates and provenance.
 
 With the desktop extra installed, edit the same experiment:
 
@@ -134,7 +134,8 @@ review. Saving alone does not approve untouched draft gates. See
 
 Choose an embedded FCS matrix, import a labelled spillover matrix, or calculate
 one from explicitly selected positive and negative populations in single-stain
-controls. Both CLI and desktop workflows are available:
+controls. The control viewer uses logicle with raw-signal thresholds; display transforms
+do not change control selection or matrix estimates. Both CLI and desktop workflows are available:
 
 ```sh
 uv run agentflow compensation import matrix.csv --out compensation.json
@@ -210,6 +211,8 @@ FlowKit retains Scott White's copyright and its accompanying BSD 3-Clause licens
 Fonts and standard XML schemas retain their own terms and copyright holders.
 No upstream endorsement is implied. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
-The proposed license for original Agentflow code is MIT. Public release is pending
-the [release review](docs/release-review.md); this proposal does not relicense
-bundled components or grant a new license to the original code yet.
+Original Agentflow code and documentation are licensed under the
+[MIT License](LICENSE), copyright 2026 Becca Carlson. This grant excludes
+bundled third-party code, schemas and fonts, which retain their own licenses
+and notices. Public distribution of the complete bundle remains subject to the
+outstanding [release review](docs/release-review.md).

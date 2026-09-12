@@ -104,6 +104,17 @@ def test_batch_replay_and_metadata(tmp_path, recipe):
     snapshot = yaml.safe_load((tmp_path / "one/reproducibility.yaml").read_text())
     assert "detectors" in snapshot["run"]["inputs"][0]["instrument"]
     assert (tmp_path / "one/gates-0001.png").exists()
+    import base64
+    import re
+
+    # Copying only the HTML must retain exact image content, without PNG requests.
+    html = (tmp_path / "one/report.html").read_text()
+    standalone = tmp_path / "standalone.html"
+    standalone.write_text(html)
+    sources = re.findall(r"<img src='([^']+)'", standalone.read_text())
+    assert sources and all(source.startswith("data:image/png;base64,") for source in sources)
+    assert base64.b64decode(sources[0].split(",", 1)[1]) == (tmp_path / "one/gates-0001.png").read_bytes()
+
     assert json.loads((tmp_path / "one/run.json").read_text()) == json.loads(
         (tmp_path / "two/run.json").read_text()
     )

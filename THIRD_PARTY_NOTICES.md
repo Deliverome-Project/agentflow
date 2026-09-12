@@ -1,5 +1,8 @@
 # Third-party notices
 
+The root MIT LICENSE covers original Agentflow code and documentation only.
+It does not replace the licenses or copyright notices of the components below.
+
 Agentflow includes FlowKit 1.3.2, Copyright (c) 2018, Scott White, under the
 BSD 3-Clause License. The complete, unmodified license (including copyright,
 conditions and disclaimer) is retained in

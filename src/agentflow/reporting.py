@@ -11,6 +11,11 @@ def write_report(folder, recipe, table, inputs):
     pending = "".join(
         f"<li>{escape(p['label'])}: {escape(p['reason'])}</li>" for p in recipe.get("pending_gates", [])
     )
+
+    def image(name, description):
+        data = base64.b64encode((folder / name).read_bytes()).decode("ascii")
+        return f"<img src='data:image/png;base64,{data}' alt='{escape(description, quote=True)}'>"
+
     sections = []
     for i, item in enumerate(inputs, 1):
         quality = item["quality"]
@@ -29,9 +34,9 @@ def write_report(folder, recipe, table, inputs):
         sections.append(
             f"<section><h2>{escape(item['sample_id'])}</h2><p>{escape(' '.join(messages))}</p>"
             f"<p><a href='gates-{i:04d}.gatingml.xml'>Download this sample’s Gating-ML gates</a></p>"
-            f"<img src='gates-{i:04d}.png' alt='Gate review for {escape(item['sample_id'], quote=True)}'>"
+            + image(f"gates-{i:04d}.png", f"Gate review for {item['sample_id']}")
             + (
-                f"<img src='time-{i:04d}.png' alt='Acquisition time QC'>"
+                image(f"time-{i:04d}.png", "Acquisition time QC")
                 if (folder / f"time-{i:04d}.png").exists()
                 else ""
             )
@@ -48,5 +53,6 @@ def write_report(folder, recipe, table, inputs):
 <body><h1>{escape(title)}</h1><p class='notice'>Draft gates are drawing aids, not biologically validated populations. Counts use all events. Fluorescence medians precede display transformations. Missing gates below were not evaluated.</p>
 <h2>Unavailable / unmapped gates</h2><ul>{pending or "<li>None</li>"}</ul>
 <p>Default compensation mode: <strong>{escape(recipe["compensation"]["mode"])}</strong>. Sample-sheet matrix assignments override this default; resolved matrices are in run provenance. <a href='recipe.json'>Recipe JSON</a> · <a href='reproducibility.yaml'>Recipe &amp; provenance YAML</a> · <a href='summary.csv'>Results CSV</a> · <a href='events.parquet'>All events (Parquet)</a> · <a href='run.json'>Run provenance</a></p>
+<p>Plot images are embedded for offline viewing. Keep the complete run folder to open linked tables, gates and provenance.</p>
 <div class='table'>{table.to_html(index=False, escape=True, float_format=lambda x: f"{x:.4g}")}</div>{"".join(sections)}</body></html>"""
     (folder / "report.html").write_text(html)

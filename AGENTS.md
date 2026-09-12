@@ -19,3 +19,7 @@ FlowKit is vendored at `src/agentflow/_vendor/flowkit`. Import it through
 Preserve its BSD license and notices, log changes in its AGENTFLOW.md, and avoid
 bulk formatting the upstream tree. Keep FlowIO/FlowUtils external unless the
 user requests otherwise. Verify wheel resources and license after vendoring edits.
+
+Main requires a pull request, passing Python/package/desktop checks on an up-to-date branch,
+and resolved review conversations. Protection applies to admins; force pushes and
+deletion are disabled. No second reviewer is required while the project has one author.

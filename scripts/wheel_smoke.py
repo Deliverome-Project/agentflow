@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+from importlib.metadata import distribution
 from pathlib import Path
 
 import numpy as np
@@ -33,3 +34,11 @@ print("Offline fonts and headless installation passed.")
 
 assert (ASSETS.parent / "icons/chevron.svg").is_file()
 assert (ASSETS.parent / "icons/check.svg").is_file()
+
+# Release packaging must retain the original-code MIT license as well as upstream notices.
+dist = distribution("agentflow-cytometry")
+licenses = [p for p in dist.files if str(p).endswith(".dist-info/licenses/LICENSE")]
+assert len(licenses) == 1
+text = dist.locate_file(licenses[0]).read_text()
+assert "MIT License" in text and "Copyright (c) 2026 Becca Carlson" in text
+print("Original-code MIT license included in installed distribution.")
