@@ -24,3 +24,22 @@ Before changing repository visibility:
 
 The repository remains private while these release questions are resolved.
 This document records packaging scope and unresolved provenance, not legal clearance.
+
+## MVP candidate checks (2026-09-12)
+
+Candidate revision: `4dc985d` (development branch; no public release).
+
+- All 106 tests passed locally; Python 3.11/3.12, package and desktop CI passed.
+- Wheel built from the source distribution and installed in an isolated Python
+  3.12 environment. Headless smoke checks covered XML resources, Gating-ML
+  round trips, bundled notices/fonts, and absence of a Qt dependency.
+- Installed-wheel synthetic demo and three-sample batch run completed.
+- Built wheel contains no FCS, workspace, CSV, Parquet or environment files.
+- Gitleaks 8.30.1 scanned 37 reachable commits with no findings. PR title/body
+  scan also passed. This is automated secret detection, not a guarantee that
+  all historical narrative or hosting logs are suitable for public disclosure.
+- No GitHub releases or uploaded Actions artifacts existed at inspection.
+
+Pending: resolve or omit legacy compatibility code, finalize the original-code
+license, select the distribution destination, and complete public-history review.
+No release or visibility change has been performed.
