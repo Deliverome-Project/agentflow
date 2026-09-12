@@ -269,3 +269,10 @@ saved in the recipe alongside the summary detector and statistic.
 
 Compare-sample pages use a fixed 2×2 layout (four samples per page). The final
 page leaves unused positions empty rather than enlarging the remaining plots.
+
+Human gate edits count as review: changing a gate marks that gate reviewed, and
+Save persists the flag in both recipe and reproducibility YAML. Undo restores the
+previous review state. Descendants remain unreviewed after a parent edit until
+separately edited or marked reviewed. A sample-specific edit reviews only that
+sample's exception. Saving alone does not approve untouched or generated gates;
+compensation changes still invalidate affected reviews.

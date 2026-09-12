@@ -120,3 +120,33 @@ def test_export_requires_explicit_override_scope(demo, tmp_path, capsys):
     assert "--sample-id" in capsys.readouterr().err
     assert main([*args, "--sample-id", "DUMMY-1"]) in (0, None)
     assert (tmp_path / "gates.xml").exists()
+
+
+def test_edit_save_reviews_only_edited_gate_and_tracks_undo(demo, tmp_path):
+    recipe = load_recipe(demo / "workflow/recipe.json")
+    state = EditorState(prepare(demo / "sample-1.fcs", recipe), recipe, tmp_path / "gates.yaml")
+    state.geometry("live", "bounds", [None, 0.2])
+    assert state.gate("live")["reviewed"]
+    assert not state.gate("gfp")["reviewed"]
+    state.travel()
+    assert not state.gate("live")["reviewed"]
+    state.travel(redo=True)
+    state.save()
+    saved = load_recipe(state.path)
+    assert next(g for g in saved["gates"] if g["name"] == "live")["reviewed"]
+    snapshot = load_recipe(state.path.with_suffix(".reproducibility.yaml"))
+    assert snapshot == saved
+    state.geometry("cells", "vertices", [[1, 1], [100000, 1], [100000, 100000], [1, 100000]])
+    assert state.gate("cells")["reviewed"]
+    assert not state.gate("live")["reviewed"]
+
+
+def test_sample_edit_review_does_not_approve_other_samples(demo, tmp_path):
+    recipe = load_recipe(demo / "workflow/recipe.json")
+    state = EditorState(prepare(demo / "sample-1.fcs", recipe), recipe, tmp_path / "gates.yaml")
+    state.sample_id, state.sample_scope = "DUMMY-1", True
+    state.geometry("live", "bounds", [None, 0.2])
+    state.save()
+    assert state.gate("live")["reviewed"]
+    state.sample_id = "DUMMY-2"
+    assert not state.gate("live")["reviewed"]

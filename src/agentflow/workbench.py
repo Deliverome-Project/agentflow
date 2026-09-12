@@ -1136,6 +1136,7 @@ class ScreenWindow(GateWindow):
                         next(i for i, g in enumerate(candidate["gates"]) if g["name"] == existing["name"])
                     ] = gate
                     self.state.invalidate(candidate, gate["name"])
+                    gate["reviewed"] = True
                 else:
                     candidate["gates"].append(gate)
                 self.state.apply(candidate)
