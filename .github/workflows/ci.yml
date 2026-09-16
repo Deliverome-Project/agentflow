@@ -1,5 +1,9 @@
 name: checks
 on: [push, pull_request]
+permissions:
+  contents: read
+env:
+  UV_EXCLUDE_NEWER: "7 days"
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -7,8 +11,13 @@ jobs:
       matrix:
         python: ['3.11', '3.12']
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.10"
+      - run: python3 scripts/check_dependency_age.py
       - run: uv sync --locked --python ${{ matrix.python }}
       - run: uv run ruff check .
       - run: uv run pytest -q
@@ -17,18 +26,45 @@ jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - run: uv build
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.10"
+      - run: python3 scripts/check_dependency_age.py
+      - run: uv sync --locked --group build --python 3.12
+      - run: uv build --no-build-isolation
+      - run: uv run --locked python scripts/check_release_contents.py
       - run: uv run --isolated --no-project --python 3.12 --with ./dist/agentflow_cytometry-0.7.1-py3-none-any.whl python scripts/wheel_smoke.py
   desktop:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.10"
       - run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libxkbcommon0
+      - run: python3 scripts/check_dependency_age.py
       - run: uv sync --locked --extra gui --python 3.12
       - run: uv run pytest tests/test_desktop.py tests/test_workbench.py -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+          MPLBACKEND: Agg
+  desktop-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.10"
+      - run: python3 scripts/check_dependency_age.py
+      - run: uv sync --locked --extra gui --python 3.12
+      - run: uv run --locked pytest tests/test_desktop.py tests/test_workbench.py -q
         env:
           QT_QPA_PLATFORM: offscreen
           MPLBACKEND: Agg

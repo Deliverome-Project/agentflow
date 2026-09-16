@@ -23,3 +23,9 @@ user requests otherwise. Verify wheel resources and license after vendoring edit
 Main requires a pull request, passing Python/package/desktop checks on an up-to-date branch,
 and resolved review conversations. Protection applies to admins; force pushes and
 deletion are disabled. No second reviewer is required while the project has one author.
+
+Dependency/release policy: keep the seven-day uv quarantine and run
+`python3 scripts/check_dependency_age.py` before installing changed dependencies.
+Do not silently bypass missing age metadata or vulnerability findings. Preserve
+SHA-pinned Actions, read-only workflow permissions, and the locked build/security
+groups. See docs/security-checks.md for release scans and their limitations.

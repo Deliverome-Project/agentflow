@@ -1,0 +1,53 @@
+name: security
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '23 8 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  UV_EXCLUDE_NEWER: "7 days"
+jobs:
+  dependency-security:
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.10"
+      - name: Verify all locked artifact ages and hashes before installation
+        run: python3 scripts/check_dependency_age.py
+      - run: uv sync --locked --group security --group build --extra gui --python ${{ matrix.python }}
+      - name: Export every dependency group for advisory checks
+        run: uv export --locked --all-groups --all-extras --no-emit-project --no-hashes --output-file /tmp/agentflow-audit.txt
+      - name: Check known vulnerabilities without installing audited requirements
+        run: uv run --locked --group security pip-audit --strict --no-deps --disable-pip -r /tmp/agentflow-audit.txt
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install checksum-verified Gitleaks
+        run: |
+          curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz' | sha256sum --check
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+      - name: Scan reachable Git history (redacted)
+        run: /tmp/gitleaks git --redact=100 --log-opts=--all .
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.10"
+      - run: python3 scripts/check_dependency_age.py
+      - run: uv sync --locked --group build --python 3.12
+      - run: uv build --no-build-isolation
+      - name: Scan packaged content, including compressed archives
+        run: /tmp/gitleaks dir --redact=100 --max-archive-depth=3 dist

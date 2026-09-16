@@ -22,6 +22,8 @@ gui = ["PySide6>=6.7,<7"]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.11"]
+build = ["hatchling"]
+security = ["pip-audit>=2.9,<3"]
 
 [project.scripts]
 agentflow = "agentflow.cli:main"
@@ -32,3 +34,6 @@ packages = ["src/agentflow"]
 [tool.ruff]
 line-length = 110
 extend-exclude = ["src/agentflow/_vendor/flowkit"]
+
+[tool.uv]
+exclude-newer = "7 days"
