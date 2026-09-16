@@ -216,3 +216,6 @@ Original Agentflow code and documentation are licensed under the
 bundled third-party code, schemas and fonts, which retain their own licenses
 and notices. Public distribution of the complete bundle remains subject to the
 outstanding [release review](docs/release-review.md).
+
+Dependency quarantine, credential scanning, release-content guards, and desktop
+CI are documented in [Security checks](docs/security-checks.md).
