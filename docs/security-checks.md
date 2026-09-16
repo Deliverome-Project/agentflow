@@ -59,6 +59,7 @@ specific advisory/artifact. Do not add broad ignores or bypass checks to make a
 release pass. An urgent security update inside the quarantine needs a documented,
 narrowly scoped policy decision, not an automatic exemption.
 
-Existing main protection requires the original test/package/desktop jobs. The new
-security and macOS job names also need to be selected as required checks in GitHub
-once this workflow has run; merely adding a workflow does not change branch rules.
+Main protection requires the original Python/package/desktop jobs plus
+`dependency-security (3.11)`, `dependency-security (3.12)`, `secrets`, and
+`desktop-macos`. Up-to-date branches and resolved conversations remain required;
+admin enforcement, force-push and deletion restrictions are unchanged.
