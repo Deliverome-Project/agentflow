@@ -105,6 +105,38 @@ class EditorState:
             next(g for g in candidate["gates"] if g["name"] == name)["reviewed"] = True
         self.apply(candidate)
 
+    def rename_population(self, name, new_name):
+        """Rename a shared identifier without changing membership or review status."""
+        if self.sample_scope:
+            raise ValueError("Population names are shared. Select All samples to rename a population.")
+        new_name = new_name.strip()
+        if self.gate(name) is None:
+            raise ValueError("Select an existing population to rename.")
+        if new_name == name:
+            return
+        reserved = {"root"} | {g["name"] for g in self.recipe["gates"] + self.recipe.get("pending_gates", [])}
+        if not new_name or new_name in reserved or any(ord(c) < 32 for c in new_name):
+            raise ValueError("Choose a nonempty, unique population name (not root or a pending population).")
+        candidate = copy.deepcopy(self.recipe)
+        for gate in candidate["gates"]:
+            if gate["name"] == name:
+                gate["name"] = new_name
+                gate["label"] = new_name
+            if gate["parent"] == name:
+                gate["parent"] = new_name
+            if "references" in gate:
+                gate["references"] = [new_name if ref == name else ref for ref in gate["references"]]
+        for changes in candidate.get("sample_overrides", {}).values():
+            if name in changes:
+                changes[new_name] = changes.pop(name)
+        roles = candidate.get("channel_roles", {})
+        if name in roles:
+            roles[new_name] = roles.pop(name)
+        display = candidate.get("display", {})
+        if display.get("summary_population") == name:
+            display["summary_population"] = new_name
+        self.apply(candidate)
+
     def deletion_set(self, name):
         """Include descendants and Boolean dependents in recipe order."""
         if self.sample_scope:

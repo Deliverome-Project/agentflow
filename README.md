@@ -219,3 +219,20 @@ outstanding [release review](docs/release-review.md).
 
 Dependency quarantine, credential scanning, release-content guards, and desktop
 CI are documented in [Security checks](docs/security-checks.md).
+
+### Editing gate shapes and names
+
+In **Edit gate** mode, drag inside a rectangle or completed polygon to move the
+whole gate; drag its handles to reshape it. For polygons, **Ctrl+click** inserts a
+vertex on the nearest edge and right-clicking a vertex removes it. To draw a new
+polygon, press **Esc**, click each point, then click the first point to finish
+(no modifier key is needed). The **Draw polygon** action also starts a fresh
+polygon. Pan/Zoom mode and alternate-axis previews do not edit gates; switch back
+to Edit gate and the gating axes first.
+
+Select a population and choose **Rename population…** below the population tree
+(or from the Analysis/right-click menu in the multi-sample viewer). Names are
+shared across samples: choose **All samples** before renaming. Children, Boolean
+references and sample-specific adjustments follow the new name; membership and
+review status are preserved. Undo/Redo includes renames. **Save** writes the new
+name to the recipe; previously exported results are unchanged until rerun.

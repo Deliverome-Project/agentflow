@@ -7,6 +7,7 @@ import numpy as np
 
 from .compensation import load_matrix
 from .engine import digest, evaluate, prepare, save_recipe, validate
+from .gate_selectors import POLYGON_HELP, GatePolygonSelector
 from .plots import draw_population
 from .workflow import ROLES, add_reporter, mark_unreviewed
 
@@ -89,7 +90,7 @@ class GateEditor:
         self.future.clear()
 
     def select_gate(self, name):
-        from matplotlib.widgets import Button, PolygonSelector, RectangleSelector, SpanSelector, TextBox
+        from matplotlib.widgets import Button, RectangleSelector, SpanSelector, TextBox
 
         if self.radio is not None and self.radio.value_selected != name:
             self.radio.eventson = False
@@ -151,8 +152,9 @@ class GateEditor:
         if kind == "polygon":
             self.ax.update_datalim(self.gate["vertices"])
             self.ax.autoscale_view()
-            self.selector = PolygonSelector(self.ax, self.polygon_changed, useblit=True)
+            self.selector = GatePolygonSelector(self.ax, self.polygon_changed, useblit=True)
             self.selector.verts = self.gate["vertices"]
+            self.detail.set_text(POLYGON_HELP)
         elif kind == "rectangle":
             x0, x1, y0, y1 = self.gate["bounds"]
             self.ax.update_datalim([[x0, y0], [x1, y1]])
@@ -162,7 +164,12 @@ class GateEditor:
             self.ax.set_xlim(min(0, left), right)
             self.ax.set_ylim(min(0, bottom), top)
             self.selector = RectangleSelector(
-                self.ax, self.rectangle_changed, interactive=True, useblit=True, button=[1]
+                self.ax,
+                self.rectangle_changed,
+                interactive=True,
+                useblit=True,
+                button=[1],
+                drag_from_anywhere=True,
             )
             self.selector.extents = self.gate["bounds"]
         else:

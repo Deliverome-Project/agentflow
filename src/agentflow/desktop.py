@@ -8,13 +8,14 @@ import re
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
-from matplotlib.widgets import PolygonSelector, RectangleSelector, SpanSelector
+from matplotlib.widgets import RectangleSelector, SpanSelector
 from PySide6 import QtCore, QtGui
 from PySide6 import QtWidgets as W
 
 from .compensation import load_matrix
 from .editor_state import EditorState
 from .engine import evaluate
+from .gate_selectors import POLYGON_HELP, GatePolygonSelector
 from .plots import draw_population
 from .population_tree import PopulationTree
 from .theme import ASSETS, BERRY, CORAL, desktop_style, setup_plots
@@ -122,6 +123,7 @@ class GateWindow(W.QMainWindow):
         self.gates = PopulationTree()
         self.gates.currentRowChanged.connect(self.change_row)
         sidebar.addWidget(self.gates, 1)
+        sidebar.addWidget(button("Rename population…", self.rename_population))
         sidebar.addWidget(label("SAMPLE", "eyebrow"))
         sample_name = label(str(prepared.sample.id), "muted")
         self.sample_label = sample_name
@@ -192,7 +194,7 @@ class GateWindow(W.QMainWindow):
         card_layout.addWidget(self.canvas, 1)
         self.help = label("", "muted")
         self.help.setWordWrap(True)
-        self.help.setMaximumHeight(44)
+        self.help.setMinimumHeight(44)
         card_layout.addWidget(self.help)
         self.stack.addWidget(plot_card)
         pending = W.QFrame(objectName="card")
@@ -385,7 +387,7 @@ class GateWindow(W.QMainWindow):
         if kind == "polygon":
             self.ax.update_datalim(gate["vertices"])
             self.ax.autoscale_view()
-            self.selector = PolygonSelector(
+            self.selector = GatePolygonSelector(
                 self.ax,
                 self.polygon,
                 useblit=True,
@@ -394,7 +396,7 @@ class GateWindow(W.QMainWindow):
                 grab_range=15,
             )
             self.selector.verts = gate["vertices"]
-            help_text = "Drag a vertex to reshape. Shift-drag moves the gate; click to draw a new polygon."
+            help_text = POLYGON_HELP
         elif kind == "rectangle":
             a, b, c, d = gate["bounds"]
             self.ax.update_datalim([[a, c], [b, d]])
@@ -404,6 +406,7 @@ class GateWindow(W.QMainWindow):
                 self.rectangle,
                 interactive=True,
                 useblit=True,
+                drag_from_anywhere=True,
                 button=[1],
                 grab_range=15,
                 handle_props={"markersize": 8},
@@ -580,8 +583,36 @@ class GateWindow(W.QMainWindow):
         if self.confirm_mapping.isChecked():
             self.perform(lambda: self.state.assign(self.active_name, self.channel.currentText()))
 
+    def rename_population(self):
+        try:
+            self.flush_bounds()
+            gate = self.state.gate(self.active_name)
+            if gate is None:
+                raise ValueError("Select an assigned population to rename.")
+            name, accepted = W.QInputDialog.getText(
+                self, "Rename population", "New name (applies to all samples):", text=gate["name"]
+            )
+            if not accepted:
+                return
+            old = self.active_name
+            self.state.rename_population(old, name)
+            name = name.strip()
+            if hasattr(self, "summary_population") and self.summary_population.currentText() == old:
+                index = self.summary_population.currentIndex()
+                self.summary_population.blockSignals(True)
+                self.summary_population.setItemText(index, name)
+                self.summary_population.blockSignals(False)
+            self.rebuild(name)
+            self.message.setText("Population renamed. Save to keep this change; Undo restores the old name.")
+        except (ValueError, KeyError, TypeError) as error:
+            self.message.setText(str(error))
+
     def travel(self, redo):
-        self.perform(lambda: self.state.travel(redo))
+        try:
+            self.state.travel(redo)
+            self.rebuild(self.active_name)
+        except (ValueError, OSError, KeyError) as error:
+            self.message.setText(str(error))
 
     def review_next(self):
         def review():
