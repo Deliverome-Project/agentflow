@@ -212,3 +212,96 @@ def test_untouched_precision_is_preserved(window):
     assert window.lower.text() == "1.2345679"
     click(window.save_button)
     assert window.state.gate("gfp")["bounds"][0] == exact
+
+
+def pointer(window, name, xy, key=None):
+    x, y = window.ax.transData.transform(xy)
+    MouseEvent(name, window.canvas, x, y, button=1, key=key)._process()
+
+
+def test_rectangle_interior_drag_preserves_size(window):
+    window.ax.set_xlim(-1, 6)
+    window.ax.set_ylim(-1, 6)
+    window.canvas.draw()
+    before = np.array(window.state.gate("cells")["bounds"])
+    for name, xy in [
+        ("button_press_event", (1, 2)),
+        ("motion_notify_event", (1.3, 2.2)),
+        ("button_release_event", (1.3, 2.2)),
+    ]:
+        pointer(window, name, xy)
+    after = np.array(window.state.gate("cells")["bounds"])
+    np.testing.assert_allclose(after - before, [0.3, 0.3, 0.2, 0.2], atol=0.02)
+    window.travel(False)
+    np.testing.assert_allclose(window.state.gate("cells")["bounds"], before)
+
+
+def test_polygon_drag_insert_save_and_undo(window):
+    candidate = copy.deepcopy(window.state.recipe)
+    gate = candidate["gates"][0]
+    gate["kind"] = "polygon"
+    del gate["bounds"]
+    gate["vertices"] = [[0, 0], [4, 0], [4, 4], [0, 4]]
+    window.state.apply(candidate)
+    window.show_gate("cells")
+    window.canvas.draw()
+    for name, xy in [
+        ("button_press_event", (1, 2)),
+        ("motion_notify_event", (1.2, 2.2)),
+        ("button_release_event", (1.2, 2.2)),
+    ]:
+        pointer(window, name, xy)
+    moved = np.array(window.state.gate("cells")["vertices"])
+    np.testing.assert_allclose(moved, np.array(gate["vertices"]) + 0.2, atol=0.02)
+    for name in ("button_press_event", "button_release_event"):
+        pointer(window, name, (2, 0.7), key="control")
+    assert len(window.state.gate("cells")["vertices"]) == 5
+    assert "Ctrl+click" in window.help.text()
+    window.state.save()
+    assert len(load_recipe(window.state.path)["gates"][0]["vertices"]) == 5
+    window.travel(False)
+    np.testing.assert_allclose(window.state.gate("cells")["vertices"], moved)
+
+
+def test_rename_preserves_membership_dependents_overrides_and_roundtrip(window, monkeypatch):
+    candidate = copy.deepcopy(window.state.recipe)
+    candidate["gates"].append(
+        {
+            "name": "combined",
+            "parent": "cells",
+            "kind": "boolean",
+            "channels": ["A", "B"],
+            "references": ["cells", "gfp"],
+            "operation": "or",
+        }
+    )
+    candidate["sample_overrides"] = {"synthetic": {"gfp": {"bounds": [2.0, None], "reviewed": True}}}
+    candidate["display"] = {"summary_population": "gfp"}
+    window.state.apply(candidate)
+    window.state.sample_id = "synthetic"
+    before = window.state.counts()
+    window.rebuild("gfp")
+    monkeypatch.setattr(W.QInputDialog, "getText", lambda *a, **k: ("Reporter positive", True))
+    window.rename_population()
+    assert window.active_name == "Reporter positive"
+    assert window.state.counts()["Reporter positive"] == before["gfp"]
+    assert window.state.counts()["combined"] == before["combined"]
+    assert window.state.gate("Reporter positive")["reviewed"]
+    assert window.state.recipe["display"]["summary_population"] == "Reporter positive"
+    window.state.save()
+    saved = load_recipe(window.state.path)
+    assert saved["gates"][-1]["references"] == ["cells", "Reporter positive"]
+    assert "Reporter positive" in saved["sample_overrides"]["synthetic"]
+    window.travel(False)
+    assert window.state.gate("gfp") is not None
+    window.travel(True)
+    assert window.state.gate("Reporter positive") is not None
+    window.state.rename_population("cells", "All cells")
+    assert window.state.gate("Reporter positive")["parent"] == "All cells"
+    assert window.state.gate("combined")["parent"] == "All cells"
+    for invalid in ("", "root", "All cells"):
+        with pytest.raises(ValueError):
+            window.state.rename_population("Reporter positive", invalid)
+    window.state.sample_scope = True
+    with pytest.raises(ValueError, match="All samples"):
+        window.state.rename_population("Reporter positive", "new")

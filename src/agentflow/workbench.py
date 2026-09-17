@@ -36,6 +36,7 @@ class ScreenWindow(GateWindow):
         analysis_menu.addAction("Save and keep editing", lambda: self.save_changes(close=False))
         analysis_menu.addAction("Save and run all samples…", self.run_analysis)
         analysis_menu.addSeparator()
+        analysis_menu.addAction("Rename selected population…", self.rename_population)
         analysis_menu.addAction("Delete selected population…", self.delete_population)
         self.gates.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.gates.customContextMenuRequested.connect(self.population_menu)
@@ -619,15 +620,6 @@ class ScreenWindow(GateWindow):
                 + " Scroll to zoom. Scatter displays up to 20,000 events per sample; counts use all events."
             )
         self.help.setToolTip(self.help.text())
-        self.help.setText(
-            {
-                "range": "Drag either boundary or enter exact limits below.",
-                "polygon": "Drag vertices to reshape · shift-drag to move the gate.",
-                "rectangle": "Drag an edge or corner to resize the population.",
-                "ratio": "Signal ratio boundaries · choose GFP / Cy5… to adjust.",
-                "boolean": "Membership follows the defining populations.",
-            }.get(gate["kind"], self.help.text())
-        )
         self.review_badge.setToolTip(self.note.text())
         self.edit_button.setEnabled(not preview)
         self.bounds_widget.setEnabled(not preview)
@@ -1159,6 +1151,7 @@ class ScreenWindow(GateWindow):
             return
         menu = W.QMenu(self)
         menu.addAction("New subpopulation…", self.new_population)
+        menu.addAction("Rename population…", self.rename_population)
         menu.addAction("Delete population…", self.delete_population)
         menu.exec(self.gates.viewport().mapToGlobal(position))
 

@@ -891,3 +891,25 @@ def test_compensation_logicle_preserves_raw_threshold_selection(window, demo, tm
     wizard.canvas.draw()
     wizard.figure.savefig(tmp_path / "compensation.png")
     wizard.reject()
+
+
+def test_polygon_help_and_rename_in_multisample_view(window, monkeypatch):
+    window.rebuild("cells")
+    assert "Ctrl+click" in window.help.text()
+    assert "Drag inside" in window.help.text()
+    before = window.state.counts()
+    window.summary_follow.setChecked(False)
+    window.summary_population.setCurrentText("cells")
+    monkeypatch.setattr(W.QInputDialog, "getText", lambda *a, **k: ("Intact cells", True))
+    window.rename_population()
+    assert window.active_name == "Intact cells"
+    assert window.summary_population.currentText() == "Intact cells"
+    assert window.state.counts()["Intact cells"] == before["cells"]
+    assert window.state.gate("singlets")["parent"] == "Intact cells"
+    window.travel(False)
+    assert "cells" in window.names
+    window.travel(True)
+    assert "Intact cells" in window.names
+    assert window.save_changes()
+    saved = json.loads(window.state.path.read_text())
+    assert saved["gates"][0]["name"] == "Intact cells"
