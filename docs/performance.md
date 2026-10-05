@@ -129,3 +129,21 @@ to achieve a faster benchmark.
 
 These are performance and synthetic regression checks. They do not establish
 biological validity or equivalence to an experimenter's real-data gating workflow.
+
+## Correctness checks
+
+The before/after full-size runs have exactly matching summary and quality CSVs,
+all 96 Gating-ML files, input fingerprints, resolved compensation and acquisition
+metadata. A streaming comparison verified every field in all 9,600,000 event
+rows, including raw and compensated detector values, original indices and all
+gate memberships. Implementation provenance appropriately changes between runs.
+
+After integrating the concurrent gate-usability update from main,
+`uv run ruff check .` passed and `uv run pytest -q` passed all 126 tests.
+Two Matplotlib tight-layout warnings occur in the small-window gallery test.
+Regression coverage includes cache eviction and invalidation, Boolean
+references, transforms, compensation-file changes, superseding pending GUI
+work, public Parquet schema preservation, bounded metadata arrays, identical
+serial/parallel outputs and atomic cleanup after a rendering-worker failure.
+The recorded editor timings precede that gate-usability integration; the
+numerical and batch-processing changes are unchanged by the integration.
