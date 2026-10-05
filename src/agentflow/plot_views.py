@@ -136,10 +136,16 @@ def apply_axes(ax, channels, recipe, modes):
             return raw if old is None else old.apply(raw)
 
         if i == 0:
-            ax.set_xscale("function", functions=(forward, inverse))
+            if mode == "recipe":
+                ax.set_xscale("linear")
+            else:
+                ax.set_xscale("function", functions=(forward, inverse))
             axis, limits = ax.xaxis, ax.get_xlim()
         else:
-            ax.set_yscale("function", functions=(forward, inverse))
+            if mode == "recipe":
+                ax.set_yscale("linear")
+            else:
+                ax.set_yscale("function", functions=(forward, inverse))
             axis, limits = ax.yaxis, ax.get_ylim()
         raw = np.asarray(limits) if canonical is None else canonical.inverse(np.asarray(limits))
         raw_ticks = np.array([-1e7, -1e6, -1e5, -1e4, -1e3, -100, -10, 0, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7])

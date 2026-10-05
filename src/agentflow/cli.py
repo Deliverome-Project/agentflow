@@ -56,6 +56,9 @@ def parser():
     run.add_argument("samples")
     run.add_argument("--recipe", required=True)
     run.add_argument("--out", required=True)
+    run.add_argument(
+        "--workers", type=int, choices=range(1, 9), default=4, help="QC rendering processes (1–8; default 4)"
+    )
     run.add_argument("--cache", help="Reuse verified identical runs from a local cache directory")
     screen = commands.add_parser(
         "screen", help="Summarize an analyzed screen by plate, controls and replicate"
@@ -182,9 +185,9 @@ def main(argv=None):
             if args.cache:
                 from .cache import run_cached
 
-                run_cached(args.samples, args.recipe, args.out, args.cache)
+                run_cached(args.samples, args.recipe, args.out, args.cache, workers=args.workers)
             else:
-                run_batch(args.samples, args.recipe, args.out)
+                run_batch(args.samples, args.recipe, args.out, workers=args.workers)
         elif args.command == "sample-summary":
             from .sample_summary import signal_summary
             from .samples import SampleSession, read_samples

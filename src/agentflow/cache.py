@@ -65,7 +65,7 @@ def valid_cache(folder):
         return False
 
 
-def run_cached(samples, recipe, output, cache):
+def run_cached(samples, recipe, output, cache, *, workers=1):
     out, cache = Path(output).resolve(), Path(cache).resolve()
     if out.exists():
         raise ValueError("Output already exists; choose a new run directory")
@@ -81,7 +81,7 @@ def run_cached(samples, recipe, output, cache):
             shutil.copytree(entry, temporary / "result", ignore=shutil.ignore_patterns("cache-files.json"))
         else:
             with contextlib.redirect_stdout(io.StringIO()):
-                run_batch(samples, recipe, temporary / "result")
+                run_batch(samples, recipe, temporary / "result", workers=workers)
         if cache_key(samples, recipe) != key:
             raise ValueError("Inputs or implementation changed during cached analysis")
         if out.exists():

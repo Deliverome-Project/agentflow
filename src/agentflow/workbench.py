@@ -2,6 +2,7 @@
 
 import copy
 import re
+import time
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +27,10 @@ class ScreenWindow(GateWindow):
         self.gallery_pending = False
         prepared, _ = self.session.get(self.record, recipe)
         super().__init__(prepared, recipe, name, path)
+        self._gallery_work = None
+        self._gallery_timer = QtCore.QTimer(self)
+        self._gallery_timer.setSingleShot(True)
+        self._gallery_timer.timeout.connect(self._prepare_gallery)
         self.setWindowTitle("Agentflow · Multi-sample screen review")
         self.setMinimumSize(980, 620)
         available = self.screen().availableGeometry()
@@ -655,9 +660,78 @@ class ScreenWindow(GateWindow):
             self.request_gallery()
 
     def request_gallery(self, *_):
-        if self.ready and not self.focus_plot.isChecked() and not self.gallery_pending:
-            self.gallery_pending = True
-            QtCore.QTimer.singleShot(0, self.update_gallery)
+        if self.ready and not self.focus_plot.isChecked():
+            # A new selection/edit supersedes unfinished work. Only render after
+            # the requested recipe has exact summaries for every selected well.
+            self._gallery_work = None
+            if not self.gallery_pending:
+                self.gallery_pending = True
+                self._gallery_timer.start(0)
+
+    def _prepare_gallery(self):
+        if not self.gallery_pending:
+            return
+        if not self.isVisible() or self.focus_plot.isChecked():
+            self.gallery_pending = False
+            self._gallery_work = None
+            return
+        if self._gallery_work is None:
+            mode = self.gallery_mode.currentText()
+            gate = self.state.gate(self.active_name)
+            records = self.selected_records()
+            if mode == "Sample MFI":
+                names = {"root", *(g["name"] for g in self.state.recipe["gates"])}
+                population = (
+                    self.active_name
+                    if self.summary_follow.isChecked()
+                    else self.summary_population.currentText()
+                )
+                population = population if population in names else "root"
+                detector = self.summary_detector.currentData()
+            elif mode == "Plate map" and gate:
+                plates = sorted({r.get("plate", "Unassigned") for r in records})
+                if not plates:
+                    self.update_gallery()
+                    return
+                plate = plates[min(self.gallery_page.value(), len(plates)) - 1]
+                records = [r for r in records if r.get("plate", "Unassigned") == plate]
+                population = gate["name"]
+                detector = gate["channels"][0] if self.plate_metric.currentIndex() == 2 else None
+            else:
+                self.update_gallery()
+                return
+            self._gallery_work = (
+                iter(records),
+                len(records),
+                copy.deepcopy(self.state.recipe),
+                population,
+                detector,
+            )
+            self._gallery_done = 0
+            # Do not leave an old recipe's plot looking current while recalculating.
+            self.gallery_figure.clear()
+            self.gallery_axes.clear()
+            self.gallery_canvas.draw_idle()
+        records, total, recipe, population, detector = self._gallery_work
+        start = time.perf_counter()
+        try:
+            while True:
+                record = next(records, None)
+                if record is None:
+                    self._gallery_work = None
+                    self.update_gallery()
+                    return
+                self.session.metrics(record, recipe, population, detector)
+                self._gallery_done += 1
+                if time.perf_counter() - start >= 0.03:
+                    self.gallery_range.setText(f"Preparing comparison: {self._gallery_done}/{total} samples")
+                    self._gallery_timer.start(0)
+                    return
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            self._gallery_work = None
+            self.gallery_pending = False
+            self.gallery_range.setText("Comparison unavailable")
+            self.message.setText(f"Comparison unavailable: {error}")
 
     def update_gallery(self, *_):
         try:
@@ -884,13 +958,14 @@ class ScreenWindow(GateWindow):
                 )
                 self.gallery_canvas.draw_idle()
                 return
-            prepared, masks = self.session.get(r, self.state.recipe)
-            count = int(masks[gate["name"]].sum())
-            parent = int(masks[gate["parent"]].sum())
             metric = self.plate_metric.currentIndex()
+            metrics = self.session.metrics(
+                r, self.state.recipe, gate["name"], gate["channels"][0] if metric == 2 else None
+            )
+            count, parent = metrics["event_count"], metrics["parent_count"]
             value = count if metric == 1 else (100 * count / parent if parent else np.nan)
             if metric == 2:
-                value = prepared.values.loc[masks[gate["name"]], gate["channels"][0]].median()
+                value = metrics["median"]
             entries.append((location, value))
             positions[location] = r["sample_id"]
         large = any(row > 7 or col > 11 for row, col in positions)

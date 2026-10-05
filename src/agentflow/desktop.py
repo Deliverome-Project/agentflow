@@ -14,7 +14,6 @@ from PySide6 import QtWidgets as W
 
 from .compensation import load_matrix
 from .editor_state import EditorState
-from .engine import evaluate
 from .plots import draw_population
 from .population_tree import PopulationTree
 from .theme import ASSETS, BERRY, CORAL, desktop_style, setup_plots
@@ -377,7 +376,7 @@ class GateWindow(W.QMainWindow):
         )
         if uncertain:
             self.subtitle.setText(self.subtitle.text() + "  ·  Dye mapping unconfirmed")
-        parent = evaluate(self.state.prepared, self.state.active_recipe)[gate["parent"]]
+        parent = self.state.masks()[gate["parent"]]
         self.draw_active(gate, parent)
         for axis, channel in zip((self.ax.xaxis, self.ax.yaxis), gate["channels"]):
             axis.set_label_text(f"{channel}  ·  {self.state.recipe['transforms'][channel]['kind']}")

@@ -108,8 +108,14 @@ uv run agentflow validate gates.yaml
 uv run agentflow run samples.csv --recipe gates.yaml --out runs/experiment-01
 ```
 
+Batch QC rendering uses four processes by default; add `--workers 1` to reduce
+memory use. Plate summaries cache exact all-event statistics separately from
+event arrays, and the editor yields between samples while preparing a comparison.
+See [performance measurements and reproducible benchmarks](docs/performance.md).
+
 Source FCS files are not modified. Counts use all events, regardless of plot
-subsampling or zoom. Samples are processed sequentially to bound memory use;
+subsampling or zoom. Event analysis/export proceeds one sample at a time, with
+bounded parallel QC rendering;
 missing channels and failed samples produce errors rather than silent omissions.
 Completed runs use new output directories.
 

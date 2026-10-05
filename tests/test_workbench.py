@@ -891,3 +891,34 @@ def test_compensation_logicle_preserves_raw_threshold_selection(window, demo, tm
     wizard.canvas.draw()
     wizard.figure.savefig(tmp_path / "compensation.png")
     wizard.reject()
+
+
+def test_plate_preparation_yields_and_supersedes_stale_work(window, monkeypatch):
+    import itertools
+
+    from agentflow import workbench
+
+    window.gallery_mode.setCurrentText("Sample MFI")
+    window.summary_follow.setChecked(False)
+    window.summary_population.setCurrentText("root")
+    calls = []
+    monkeypatch.setattr(window.session, "metrics", lambda *args: calls.append(args))
+    ticks = itertools.count()
+    monkeypatch.setattr(workbench.time, "perf_counter", lambda: next(ticks))
+    window.request_gallery()
+    window._gallery_timer.stop()
+    window._prepare_gallery()
+    assert len(calls) == 1
+    assert window.gallery_pending
+    assert "1/3" in window.gallery_range.text()
+    window.summary_population.setCurrentText("live")
+    window.request_gallery()
+    window._gallery_timer.stop()
+    window._prepare_gallery()
+    assert len(calls) == 2
+    assert calls[-1][2] == "live"
+    assert calls[-1][0] == window.records[0]
+    window.focus_plot.setChecked(True)
+    window._gallery_timer.stop()
+    window._prepare_gallery()
+    assert not window.gallery_pending
