@@ -80,16 +80,20 @@ class AnalysisJob(QtCore.QObject):
             self.completed.emit(str(self.output / "report.html"))
         else:
             message = bytes(self.process.readAllStandardError()).decode(errors="replace")
-            try:
-                details = json.loads(message)
-                if isinstance(details, dict):
-                    if code == 2 and details.get("status") == "cancelled":
-                        self.cancelled.emit()
-                        self._cleanup()
-                        return
-                    message = details.get("message", message)
-            except ValueError:
-                pass
+            # Library warnings may precede the CLI's final structured status.
+            for line in reversed(message.splitlines()):
+                try:
+                    details = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(details, dict) or details.get("status") not in {"error", "cancelled"}:
+                    continue
+                if code == 2 and status == QtCore.QProcess.NormalExit and details["status"] == "cancelled":
+                    self.cancelled.emit()
+                    self._cleanup()
+                    return
+                message = details.get("message", message)
+                break
             self.failed.emit(message.strip() or "Analysis process exited unexpectedly")
         self._cleanup()
 

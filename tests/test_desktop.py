@@ -67,6 +67,25 @@ def click(widget):
     QtTest.QTest.mouseClick(widget, QtCore.Qt.MouseButton.LeftButton)
 
 
+def test_cancelled_job_handles_preceding_library_warnings(app, tmp_path, monkeypatch):
+    from agentflow.desktop_jobs import AnalysisJob
+
+    job = AnalysisJob([], tmp_path / "recipe.json", tmp_path / "run")
+    outcomes = []
+    job.cancelled.connect(lambda: outcomes.append("cancelled"))
+    job.failed.connect(lambda error: outcomes.append(error))
+    monkeypatch.setattr(
+        job.process,
+        "readAllStandardError",
+        lambda: QtCore.QByteArray(
+            b'UserWarning: diagnostic warning\n{"status":"cancelled","message":"Stopped"}\n'
+        ),
+    )
+    job._finished(2, QtCore.QProcess.NormalExit)
+    assert outcomes == ["cancelled"]
+    assert job.done
+
+
 def test_native_threshold_typing_save_and_reopen(window, app):
     window.gates.setCurrentRow(1)
     window.lower.selectAll()

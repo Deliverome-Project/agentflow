@@ -153,7 +153,8 @@ gate memberships. Implementation provenance appropriately changes between runs.
 
 On the final code, including the gate-usability update from main, density-dot
 views, metadata labels and security fixes, `uv run ruff check .` passed and
-`uv run pytest -q` passed all 160 tests.
+`uv run pytest -q` passed the complete suite. Additional regressions cover
+processed-sample progress and cooperative cancellation without partial publication.
 Two Matplotlib tight-layout warnings occur in the small-window gallery test.
 Regression coverage includes cache eviction and invalidation, Boolean
 references, transforms, compensation-file changes, superseding pending GUI
