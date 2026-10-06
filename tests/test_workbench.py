@@ -209,8 +209,15 @@ def test_new_boolean_population_and_undo(window):
 
 
 def test_plate_map_click_selects_sample(window):
+    from PySide6.QtTest import QTest
+
     window.gallery_mode.setCurrentText("Plate map")
-    W.QApplication.processEvents()
+    # Preparation yields between samples; one event-loop turn is not completion.
+    for _ in range(1000):
+        QTest.qWait(10)
+        if not window.gallery_pending:
+            break
+    assert not window.gallery_pending
     ax = next(iter(window.gallery_axes))
     window.select_gallery(SimpleNamespace(inaxes=ax, xdata=2.0, ydata=0.0))
     assert window.record["sample_id"] == "DUMMY-3"
@@ -462,6 +469,8 @@ def test_background_analysis_saved_recipe_matches_gui(window, tmp_path, monkeypa
     assert window.save_changes(close=False)
     expected = window.state.counts()["live"]
     window.start_analysis(tmp_path / "run")
+    updates = []
+    window.analysis_job.progress.connect(lambda done, total: updates.append((done, total)))
     for _ in range(600):
         QTest.qWait(50)
         if not window.analysis_job.isRunning() and window.centralWidget().isEnabled():
@@ -469,8 +478,27 @@ def test_background_analysis_saved_recipe_matches_gui(window, tmp_path, monkeypa
     assert not window.analysis_job.isRunning()
     assert window.centralWidget().isEnabled()
     assert window.analysis_error is None
+    assert updates == [(0, 3), (1, 3), (2, 3), (3, 3)]
     table = pd.read_csv(tmp_path / "run/summary.csv")
     assert table.loc[(table.sample_id == "DUMMY-1") & (table.gate == "live"), "count"].iloc[0] == expected
+
+
+def test_cancel_analysis_restores_editor_without_partial_results(window, tmp_path):
+    from PySide6.QtTest import QTest
+
+    assert window.save_changes(close=False)
+    output = tmp_path / "cancelled"
+    window.start_analysis(output)
+    window.cancel_analysis()
+    for _ in range(600):
+        QTest.qWait(50)
+        if window.centralWidget().isEnabled():
+            break
+    assert window.centralWidget().isEnabled()
+    assert window.analysis_cancelled
+    assert window.analysis_error is None
+    assert not output.exists()
+    assert not list(tmp_path.glob(".agentflow-*"))
 
 
 def test_launcher_reopens_saved_analysis(window, demo):

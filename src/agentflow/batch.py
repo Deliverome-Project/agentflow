@@ -23,7 +23,16 @@ from .samples import read_samples, sample_recipe
 from .vendor_info import vendor_identity
 
 
-def run_batch(samples, recipe_path, output, *, workers=1):
+class AnalysisCancelled(ValueError):
+    """A cooperative stop; no partial output is published."""
+
+
+def run_batch(samples, recipe_path, output, *, workers=1, progress=None, cancelled=None):
+    def check_cancelled():
+        if cancelled is not None and cancelled():
+            raise AnalysisCancelled("Analysis cancelled; no results published")
+
+    check_cancelled()
     if isinstance(workers, bool) or not isinstance(workers, int) or not 1 <= workers <= 8:
         raise ValueError("QC workers must be an integer from 1 to 8")
     implementation = software_identity()
@@ -41,6 +50,8 @@ def run_batch(samples, recipe_path, output, *, workers=1):
     ):
         raise ValueError("Sample IDs must be nonempty and unique; provide at least one sample")
     records = read_samples(samples)
+    if progress is not None:
+        progress(0, len(records))
     compensation_inputs = {
         r["compensation_path"]: digest(r["compensation_path"]) for r in records if r.get("compensation_path")
     }
@@ -55,6 +66,7 @@ def run_batch(samples, recipe_path, output, *, workers=1):
         event_writer = EventWriter(staging / "events.parquet", records, recipe)
         with QcJobs(min(workers, len(records))) as qc:
             for index, record in enumerate(records):
+                check_cancelled()
                 path = Path(record["fcs_path"])
                 if not path.is_absolute():
                     path = Path(samples).resolve().parent / path
@@ -93,6 +105,10 @@ def run_batch(samples, recipe_path, output, *, workers=1):
                 with (staging / f"gates-{index + 1:04d}.gatingml.xml").open("wb") as handle:
                     flowkit.export_gatingml(build_strategy(effective, prepared.matrix), handle)
                 qc.submit(prepared, effective, masks, staging, index, record["sample_id"])
+                if progress is not None:
+                    progress(index + 1, len(records))
+                check_cancelled()
+        check_cancelled()
         event_writer.close()
         event_writer = None
         if Path(recipe_path).read_bytes() != recipe_bytes or Path(samples).read_bytes() != manifest_bytes:
@@ -163,6 +179,7 @@ def run_batch(samples, recipe_path, output, *, workers=1):
             raise ValueError("Agentflow implementation changed during analysis")
         if out.exists():
             raise ValueError("Output appeared during analysis; choose a new run directory")
+        check_cancelled()
         staging.rename(out)
     finally:
         if event_writer is not None:

@@ -175,6 +175,47 @@ def test_qc_worker_failure_does_not_publish(demo, tmp_path):  # noqa: F811
     assert not list(tmp_path.glob(".agentflow-*"))
 
 
+def test_batch_progress_and_cancellation_clean_staging(demo, tmp_path):  # noqa: F811
+    from agentflow.batch import AnalysisCancelled, run_batch
+
+    updates = []
+    with pytest.raises(AnalysisCancelled):
+        run_batch(
+            demo / "workflow/samples.csv",
+            demo / "workflow/recipe.json",
+            tmp_path / "cancelled",
+            workers=2,
+            progress=lambda done, total: updates.append((done, total)),
+            cancelled=lambda: bool(updates and updates[-1][0] >= 1),
+        )
+    assert updates == [(0, 3), (1, 3)]
+    assert not (tmp_path / "cancelled").exists()
+    assert not list(tmp_path.glob(".agentflow-*"))
+
+
+def test_cancellation_before_publication(demo, tmp_path, monkeypatch):  # noqa: F811
+    from agentflow import batch
+
+    stop = False
+    original = batch.write_report
+
+    def report(*args):
+        nonlocal stop
+        original(*args)
+        stop = True
+
+    monkeypatch.setattr(batch, "write_report", report)
+    with pytest.raises(batch.AnalysisCancelled):
+        batch.run_batch(
+            demo / "workflow/samples.csv",
+            demo / "workflow/recipe.json",
+            tmp_path / "cancelled",
+            cancelled=lambda: stop,
+        )
+    assert not (tmp_path / "cancelled").exists()
+    assert not list(tmp_path.glob(".agentflow-*"))
+
+
 def test_population_selection_and_unrelated_edits_reuse_summaries(demo, monkeypatch):  # noqa: F811
     records, recipe = inputs(demo)
     session = SampleSession(records, limit=1)

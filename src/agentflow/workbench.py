@@ -330,23 +330,50 @@ class ScreenWindow(GateWindow):
         from .desktop_jobs import AnalysisJob
 
         self.analysis_job = AnalysisJob(copy.deepcopy(self.records), self.state.path, output, self)
-        self.analysis_progress = W.QProgressDialog("Analyzing all samples…", "", 0, 0, self)
-        self.analysis_progress.setCancelButton(None)
+        self.analysis_progress = W.QProgressDialog(
+            "Preparing analysis…", "Cancel run", 0, len(self.records) + 1, self
+        )
+        self.analysis_progress.setAutoClose(False)
+        self.analysis_progress.setAutoReset(False)
+        self.analysis_progress.canceled.connect(self.cancel_analysis)
         self.analysis_progress.setWindowModality(QtCore.Qt.WindowModal)
         self.analysis_progress.setWindowTitle("Running saved analysis")
         self.centralWidget().setEnabled(False)
         self.analysis_error = None
         self.analysis_report = None
+        self.analysis_cancelled = False
+        self.analysis_cancelling = False
+        self.analysis_job.progress.connect(self.analysis_update)
+        self.analysis_job.cancelled.connect(lambda: setattr(self, "analysis_cancelled", True))
         self.analysis_job.completed.connect(lambda path: setattr(self, "analysis_report", path))
         self.analysis_job.failed.connect(lambda message: setattr(self, "analysis_error", message))
         self.analysis_job.finished.connect(self.finish_analysis)
         self.analysis_progress.show()
         self.analysis_job.start()
 
+    def analysis_update(self, done, total):
+        self.analysis_progress.setValue(done)
+        if not self.analysis_cancelling:
+            self.analysis_progress.setLabelText(
+                f"Processed {done} of {total} samples."
+                + (" Finishing plots and report…" if done == total else "")
+            )
+
+    def cancel_analysis(self):
+        if not self.analysis_job.isRunning():
+            return
+        self.analysis_cancelling = True
+        self.analysis_job.cancel()
+        self.analysis_progress.setLabelText("Cancelling after the current sample and pending plots…")
+        self.analysis_progress.setCancelButton(None)
+        self.analysis_progress.show()
+
     def finish_analysis(self):
         self.analysis_progress.close()
         self.centralWidget().setEnabled(True)
-        if self.analysis_error:
+        if self.analysis_cancelled:
+            self.message.setText("Analysis cancelled. No results were published.")
+        elif self.analysis_error:
             self.message.setText(f"Analysis failed: {self.analysis_error}")
         else:
             self.message.setText(f"Analysis complete: {self.analysis_report}")

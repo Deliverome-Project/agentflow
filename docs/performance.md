@@ -162,3 +162,72 @@ serial/parallel outputs and atomic cleanup after a rendering-worker failure.
 The final editor timings include the integrated gate-usability changes. Density
 view and metadata tests additionally verify that detector identities and exact
 counts remain independent of names, point caps and display axes.
+
+## Responsiveness targets and production comparison
+
+A speedup over this application's baseline is not evidence of parity with FlowJo.
+No matched FlowJo benchmark on the same hardware, data, gates and output bundle
+has been performed; no installation was found in the standard Applications folder.
+The vendor performance documentation describes implementation choices, not a
+comparable 96-well wall-clock guarantee.
+
+[Nielsen Norman Group's response-time guidance](https://www.nngroup.com/articles/response-times-3-important-limits/)
+places immediate feedback around 100 ms, uninterrupted navigation below one
+second, and attention loss around ten seconds. Longer jobs need progress and
+an interrupt option. [Google's INP guidance](https://web.dev/articles/inp)
+uses 200 ms for good input-to-next-paint responsiveness and 500 ms for poor
+responsiveness. INP is a browser field metric; our Qt offscreen timers are not
+INP and do not measure physical display presentation.
+
+The following are Agentflow engineering targets derived from that guidance,
+not claims about a vendor's speed or a formal certification:
+
+| Action | Target on the reference workload |
+| --- | --- |
+| Gate drag feedback | p95 preview render ≤100 ms; avoid recomputing the plate during dragging |
+| Cached sample/population selection | p95 first useful plot render ≤200 ms, full focused/comparison update ≤500 ms |
+| Uncached navigation / gallery page | Useful feedback immediately, plot within 1 s where feasible; show loading otherwise |
+| First plate scan / changed-gate plate calculation | Background or cooperative work with progress, supersession/cancellation and no stale results presented as current |
+| Full export / QC report | Background job with completed-sample progress and cancel; measure throughput separately from interaction latency |
+
+Twenty warm trials per action on the same 96-well fixture yielded these p95
+values. `scripts/benchmark_editor.py --repetitions 20` writes the raw trials,
+median, p95 and maximum to `interactions.json`. The first-plot measure records
+Matplotlib's `draw_event`, excluding the benchmark's deliberately forced final
+canvas redraws used in the earlier complete-action timer.
+
+| Warm action | First plot render p95 | Completed comparison p95 |
+| --- | ---: | ---: |
+| Switch between two cached samples | 188 ms | 396 ms |
+| Redraw | 103 ms | 359 ms |
+| Change population | 95 ms | 312 ms |
+| Drag threshold preview | 74 ms | 74 ms |
+
+These warm actions meet the stated offscreen targets in this run. This is a
+small single-session distribution, not a stable population estimate. Cold
+comparison paging still took 1.6–1.9 s, and the longest opening heartbeat gap
+was 1.1–1.3 s: those remain gaps against the navigation target. Initial and edited
+plate completion takes roughly 18–22 s. Batch runtime of 115.53 s is a measured
+throughput result, not an industry-standard acceptance threshold.
+
+[FlowJo's documented performance techniques](https://flowjo.com/docs/flowjo10/setting-your-preferences/tools/performance)
+include separate sample and request caches, calculation engines and limited-event
+fast previews. Agentflow now uses separate exact-result/display caches, bounded
+parallel QC and display-only point caps. Further improvements should move long
+per-sample computation off the UI thread and budget caches by bytes.
+[Qt documents worker execution](https://doc.qt.io/qt-6/threads.html) as a way to
+keep expensive work from freezing the interface; Qt/Matplotlib widgets must
+continue to be updated on the GUI thread.
+
+Batch execution now reports processed samples and offers cooperative cancellation.
+The last sample's progress is followed by a distinct finishing stage; 100% is not
+shown before report publication. Cancellation waits for the current sample and
+bounded pending rendering jobs, closes the event writer and deletes staging.
+It never publishes a partial run. A cancellation arriving after successful
+publication is reported as completed, not as a cancelled/deleted result.
+
+Before claiming production parity, repeat cold and warm trials across multiple
+sessions on Brenna's workstation, measure native input-to-visible-feedback and
+peak memory, and compare equivalent FlowJo workflows and outputs. Keep exact
+count/value equality as a release condition; speed must not come from omitting
+samples, weakening compensation or reducing analytical precision.

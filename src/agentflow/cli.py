@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .batch import run_batch
+from .batch import AnalysisCancelled, run_batch
 from .compensation import control_diagnostics, estimate_controls, load_matrix, matrix_diagnostic, save_matrix
 from .engine import build_strategy, evaluate, flowkit, load_recipe, prepare, validate
 from .workflow import default_transform, inspect_sample, scaffold
@@ -60,6 +60,8 @@ def parser():
         "--workers", type=int, choices=range(1, 9), default=4, help="QC rendering processes (1–8; default 4)"
     )
     run.add_argument("--cache", help="Reuse verified identical runs from a local cache directory")
+    run.add_argument("--progress", action="store_true", help="Emit per-sample JSON progress")
+    run.add_argument("--cancel-file", help=argparse.SUPPRESS)
     screen = commands.add_parser(
         "screen", help="Summarize an analyzed screen by plate, controls and replicate"
     )
@@ -185,9 +187,24 @@ def main(argv=None):
             if args.cache:
                 from .cache import run_cached
 
+                if args.progress or args.cancel_file:
+                    raise ValueError(
+                        "Progress and cancellation controls require a fresh run, without --cache"
+                    )
                 run_cached(args.samples, args.recipe, args.out, args.cache, workers=args.workers)
             else:
-                run_batch(args.samples, args.recipe, args.out, workers=args.workers)
+
+                def progress(done, total):
+                    print(json.dumps({"status": "progress", "processed": done, "total": total}), flush=True)
+
+                run_batch(
+                    args.samples,
+                    args.recipe,
+                    args.out,
+                    workers=args.workers,
+                    progress=progress if args.progress else None,
+                    cancelled=Path(args.cancel_file).exists if args.cancel_file else None,
+                )
         elif args.command == "sample-summary":
             from .sample_summary import signal_summary
             from .samples import SampleSession, read_samples
@@ -246,6 +263,9 @@ def main(argv=None):
 
             make_demo(args.out)
             print(json.dumps({"status": "created", "output": args.out, "is_example": True}))
+    except AnalysisCancelled as error:
+        print(json.dumps({"status": "cancelled", "message": str(error)}), file=sys.stderr)
+        return 2
     except (
         ValueError,
         KeyError,
