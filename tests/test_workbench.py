@@ -88,7 +88,64 @@ def test_dummy_live_threshold_signal_units_and_save(window):
     assert "display" in json.loads(window.state.path.read_text())
 
 
+def test_default_density_threshold_view_and_histogram_preserve_analysis(window):
+    assert window.plot_type.currentText() == "Density dots"
+    assert window.display_channels(window.state.gate("live")) == ["BV1-A", "SSC-A"]
+    counts = window.state.counts()
+    gates = copy.deepcopy(window.state.recipe["gates"])
+    assert "SSC-A" in window.ax.get_ylabel()
+    assert len(window.ax.collections) > 0
+    window.range_y.setCurrentIndex(window.range_y.findData("FSC-A"))
+    assert "FSC-A" in window.ax.get_ylabel()
+    window.plot_type.setCurrentText("Histogram")
+    assert "Events" in window.ax.get_ylabel()
+    window.plot_type.setCurrentText("Density dots")
+    assert window.state.counts() == counts
+    assert window.state.recipe["gates"] == gates
+    window.save_changes()
+    saved = json.loads(window.state.path.read_text())
+    assert saved["display"]["plot_type"] == "Density dots"
+    assert saved["display"]["range_y_channel"] == "FSC-A"
+
+
+def test_detector_choices_show_names_but_store_raw_ids(window):
+    s = window.state.prepared.sample
+    index = s.pnn_labels.index("BL1-A")
+    old = s.pns_labels[index]
+    try:
+        s.pns_labels[index] = "FITC reporter"
+        window.show_gate("gfp")
+        assert "FITC reporter" in window.ax.get_xlabel()
+        i = window.summary_detector.findData("BL1-A")
+        assert "FITC reporter" in window.summary_detector.itemText(i)
+        assert window.summary_detector.itemData(i) == "BL1-A"
+    finally:
+        s.pns_labels[index] = old
+
+
+def test_detector_named_population_uses_metadata_without_changing_gate_id(window):
+    sample = window.state.prepared.sample
+    index = sample.pnn_labels.index("BL1-A")
+    old = sample.pns_labels[index]
+    try:
+        sample.pns_labels[index] = "FITC reporter"
+        window.state.rename_population("gfp", "BL1-A")
+        candidate = copy.deepcopy(window.state.recipe)
+        next(g for g in candidate["gates"] if g["name"] == "BL1-A").pop("label")
+        window.state.apply(candidate)
+        window.show_gate("BL1-A")
+        assert window.title.text() == "FITC reporter · BL1-A"
+        assert window.state.gate("BL1-A")["channels"] == ["BL1-A"]
+        assert "FITC reporter" in window.ax.get_xlabel()
+        window.state.rename_population("BL1-A", "My population")
+        window.show_gate("My population")
+        assert window.title.text() == "My population"
+    finally:
+        sample.pns_labels[index] = old
+
+
 def test_histogram_drag_keeps_threshold_and_zoom(window):
+    window.plot_type.setCurrentText("Histogram")
     from matplotlib.backend_bases import MouseEvent
 
     from agentflow.engine import load_recipe
@@ -116,6 +173,7 @@ def test_histogram_drag_keeps_threshold_and_zoom(window):
 
 
 def test_overlay_scatter_density_axes_and_counts(window):
+    window.plot_type.setCurrentText("Scatter")
     window.gates.setCurrentRow(0)
     before = copy.deepcopy(window.state.recipe)
     counts = window.state.counts()
@@ -172,8 +230,15 @@ def test_new_boolean_population_and_undo(window):
 
 
 def test_plate_map_click_selects_sample(window):
+    from PySide6.QtTest import QTest
+
     window.gallery_mode.setCurrentText("Plate map")
-    W.QApplication.processEvents()
+    # Preparation yields between samples; one event-loop turn is not completion.
+    for _ in range(1000):
+        QTest.qWait(10)
+        if not window.gallery_pending:
+            break
+    assert not window.gallery_pending
     ax = next(iter(window.gallery_axes))
     window.select_gallery(SimpleNamespace(inaxes=ax, xdata=2.0, ydata=0.0))
     assert window.record["sample_id"] == "DUMMY-3"
@@ -425,6 +490,8 @@ def test_background_analysis_saved_recipe_matches_gui(window, tmp_path, monkeypa
     assert window.save_changes(close=False)
     expected = window.state.counts()["live"]
     window.start_analysis(tmp_path / "run")
+    updates = []
+    window.analysis_job.progress.connect(lambda done, total: updates.append((done, total)))
     for _ in range(600):
         QTest.qWait(50)
         if not window.analysis_job.isRunning() and window.centralWidget().isEnabled():
@@ -432,8 +499,27 @@ def test_background_analysis_saved_recipe_matches_gui(window, tmp_path, monkeypa
     assert not window.analysis_job.isRunning()
     assert window.centralWidget().isEnabled()
     assert window.analysis_error is None
+    assert updates == [(0, 3), (1, 3), (2, 3), (3, 3)]
     table = pd.read_csv(tmp_path / "run/summary.csv")
     assert table.loc[(table.sample_id == "DUMMY-1") & (table.gate == "live"), "count"].iloc[0] == expected
+
+
+def test_cancel_analysis_restores_editor_without_partial_results(window, tmp_path):
+    from PySide6.QtTest import QTest
+
+    assert window.save_changes(close=False)
+    output = tmp_path / "cancelled"
+    window.start_analysis(output)
+    window.cancel_analysis()
+    for _ in range(600):
+        QTest.qWait(50)
+        if window.centralWidget().isEnabled():
+            break
+    assert window.centralWidget().isEnabled()
+    assert window.analysis_cancelled
+    assert window.analysis_error is None
+    assert not output.exists()
+    assert not list(tmp_path.glob(".agentflow-*"))
 
 
 def test_launcher_reopens_saved_analysis(window, demo):
@@ -891,6 +977,37 @@ def test_compensation_logicle_preserves_raw_threshold_selection(window, demo, tm
     wizard.canvas.draw()
     wizard.figure.savefig(tmp_path / "compensation.png")
     wizard.reject()
+
+
+def test_plate_preparation_yields_and_supersedes_stale_work(window, monkeypatch):
+    import itertools
+
+    from agentflow import workbench
+
+    window.gallery_mode.setCurrentText("Sample MFI")
+    window.summary_follow.setChecked(False)
+    window.summary_population.setCurrentText("root")
+    calls = []
+    monkeypatch.setattr(window.session, "metrics", lambda *args: calls.append(args))
+    ticks = itertools.count()
+    monkeypatch.setattr(workbench.time, "perf_counter", lambda: next(ticks))
+    window.request_gallery()
+    window._gallery_timer.stop()
+    window._prepare_gallery()
+    assert len(calls) == 1
+    assert window.gallery_pending
+    assert "1/3" in window.gallery_range.text()
+    window.summary_population.setCurrentText("live")
+    window.request_gallery()
+    window._gallery_timer.stop()
+    window._prepare_gallery()
+    assert len(calls) == 2
+    assert calls[-1][2] == "live"
+    assert calls[-1][0] == window.records[0]
+    window.focus_plot.setChecked(True)
+    window._gallery_timer.stop()
+    window._prepare_gallery()
+    assert not window.gallery_pending
 
 
 def test_polygon_help_and_rename_in_multisample_view(window, monkeypatch):

@@ -108,8 +108,14 @@ uv run agentflow validate gates.yaml
 uv run agentflow run samples.csv --recipe gates.yaml --out runs/experiment-01
 ```
 
+Batch QC rendering uses four processes by default; add `--workers 1` to reduce
+memory use. Plate summaries cache exact all-event statistics separately from
+event arrays, and the editor yields between samples while preparing a comparison.
+See [performance measurements and reproducible benchmarks](docs/performance.md).
+
 Source FCS files are not modified. Counts use all events, regardless of plot
-subsampling or zoom. Samples are processed sequentially to bound memory use;
+subsampling or zoom. Event analysis/export proceeds one sample at a time, with
+bounded parallel QC rendering;
 missing channels and failed samples produce errors rather than silent omissions.
 Completed runs use new output directories.
 
@@ -221,6 +227,14 @@ Dependency quarantine, credential scanning, release-content guards, and desktop
 CI are documented in [Security checks](docs/security-checks.md).
 
 ### Editing gate shapes and names
+
+Plots now default to density-colored dots: blue is sparse and red is dense.
+Threshold gates open against a second detector (usually SSC-A); choose
+**Plot settings → Histogram** for a one-dimensional view, or **Threshold plot Y**
+to change the second axis. Counts always use every event. Axes and selectors show
+FCS stain names alongside the original detector IDs, with the supplied CytoFLEX
+aliases as a fallback. See [channel names and MA900 metadata](docs/channel-labels.md)
+and [96-well performance measurements](docs/performance.md).
 
 In **Edit gate** mode, drag inside a rectangle or completed polygon to move the
 whole gate; drag its handles to reshape it. For polygons, **Ctrl+click** inserts a

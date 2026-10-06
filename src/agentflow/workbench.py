@@ -2,6 +2,7 @@
 
 import copy
 import re
+import time
 from pathlib import Path
 
 import numpy as np
@@ -10,9 +11,16 @@ from matplotlib.figure import Figure
 from PySide6 import QtCore, QtGui
 from PySide6 import QtWidgets as W
 
+from .channel_names import (
+    add_detector_choices,
+    channel_annotation,
+    channel_label,
+    instrument_name,
+    select_detector,
+)
 from .desktop import TITLES, GateWindow, button, label
 from .engine import make_transform
-from .plot_views import apply_axes, display_spec, draw_boundary, draw_events, scatter_limits
+from .plot_views import apply_axes, display_spec, draw_boundary, draw_events, plot_channels, scatter_limits
 from .samples import SampleSession, sample_recipe
 
 
@@ -26,6 +34,10 @@ class ScreenWindow(GateWindow):
         self.gallery_pending = False
         prepared, _ = self.session.get(self.record, recipe)
         super().__init__(prepared, recipe, name, path)
+        self._gallery_work = None
+        self._gallery_timer = QtCore.QTimer(self)
+        self._gallery_timer.setSingleShot(True)
+        self._gallery_timer.timeout.connect(self._prepare_gallery)
         self.setWindowTitle("Agentflow · Multi-sample screen review")
         self.setMinimumSize(980, 620)
         available = self.screen().availableGeometry()
@@ -115,7 +127,10 @@ class ScreenWindow(GateWindow):
         self.main_layout.insertLayout(2, plot_actions)
         settings = W.QHBoxLayout()
         self.plot_type = W.QComboBox()
-        self.plot_type.addItems(["Scatter", "Density", "Contour"])
+        self.plot_type.addItems(["Density dots", "Scatter", "Density", "Contour", "Histogram"])
+        self.plot_type.setToolTip(
+            "Histogram applies to one-dimensional threshold gates; two-dimensional gates retain both axes."
+        )
         self.plot_type.currentIndexChanged.connect(self.redraw)
         settings.addWidget(self.plot_type)
         self.histogram_label = label("Histogram")
@@ -140,6 +155,16 @@ class ScreenWindow(GateWindow):
         self.normalization.currentIndexChanged.connect(self.redraw)
         settings.addWidget(self.normalization)
         display_layout.addLayout(settings)
+        self.range_y = W.QComboBox()
+        self.range_y.setObjectName("range_y_channel")
+        add_detector_choices(self.range_y, self.state.prepared.sample, self.state.recipe["transforms"])
+        select_detector(self.range_y, recipe.get("display", {}).get("range_y_channel", "SSC-A"))
+        self.range_y.currentIndexChanged.connect(self.redraw)
+        self.range_y_label = label("Threshold plot Y")
+        range_axes = W.QHBoxLayout()
+        range_axes.addWidget(self.range_y_label)
+        range_axes.addWidget(self.range_y)
+        display_layout.addLayout(range_axes)
         axes = W.QHBoxLayout()
         axes.addWidget(label("Display axes"))
         self.x_scale, self.y_scale = W.QComboBox(), W.QComboBox()
@@ -197,8 +222,7 @@ class ScreenWindow(GateWindow):
         detectors = [sample.pnn_labels[i] for i in sample.fluoro_indices]
         detectors.sort(key=lambda c: (not c.endswith("-A"), c))
         for c in detectors:
-            marker = sample.pns_labels[sample.pnn_labels.index(c)]
-            self.summary_detector.addItem(f"{marker or c} · {c}" if marker else c, c)
+            self.summary_detector.addItem(channel_label(sample, c), c)
         preferred = recipe.get("channel_roles", {}).get("gfp", {}).get("detector")
         if not preferred and "FL5-A" in detectors:
             preferred = "FL5-A"
@@ -306,23 +330,50 @@ class ScreenWindow(GateWindow):
         from .desktop_jobs import AnalysisJob
 
         self.analysis_job = AnalysisJob(copy.deepcopy(self.records), self.state.path, output, self)
-        self.analysis_progress = W.QProgressDialog("Analyzing all samples…", "", 0, 0, self)
-        self.analysis_progress.setCancelButton(None)
+        self.analysis_progress = W.QProgressDialog(
+            "Preparing analysis…", "Cancel run", 0, len(self.records) + 1, self
+        )
+        self.analysis_progress.setAutoClose(False)
+        self.analysis_progress.setAutoReset(False)
+        self.analysis_progress.canceled.connect(self.cancel_analysis)
         self.analysis_progress.setWindowModality(QtCore.Qt.WindowModal)
         self.analysis_progress.setWindowTitle("Running saved analysis")
         self.centralWidget().setEnabled(False)
         self.analysis_error = None
         self.analysis_report = None
+        self.analysis_cancelled = False
+        self.analysis_cancelling = False
+        self.analysis_job.progress.connect(self.analysis_update)
+        self.analysis_job.cancelled.connect(lambda: setattr(self, "analysis_cancelled", True))
         self.analysis_job.completed.connect(lambda path: setattr(self, "analysis_report", path))
         self.analysis_job.failed.connect(lambda message: setattr(self, "analysis_error", message))
         self.analysis_job.finished.connect(self.finish_analysis)
         self.analysis_progress.show()
         self.analysis_job.start()
 
+    def analysis_update(self, done, total):
+        self.analysis_progress.setValue(done)
+        if not self.analysis_cancelling:
+            self.analysis_progress.setLabelText(
+                f"Processed {done} of {total} samples."
+                + (" Finishing plots and report…" if done == total else "")
+            )
+
+    def cancel_analysis(self):
+        if not self.analysis_job.isRunning():
+            return
+        self.analysis_cancelling = True
+        self.analysis_job.cancel()
+        self.analysis_progress.setLabelText("Cancelling after the current sample and pending plots…")
+        self.analysis_progress.setCancelButton(None)
+        self.analysis_progress.show()
+
     def finish_analysis(self):
         self.analysis_progress.close()
         self.centralWidget().setEnabled(True)
-        if self.analysis_error:
+        if self.analysis_cancelled:
+            self.message.setText("Analysis cancelled. No results were published.")
+        elif self.analysis_error:
             self.message.setText(f"Analysis failed: {self.analysis_error}")
         else:
             self.message.setText(f"Analysis complete: {self.analysis_report}")
@@ -457,6 +508,12 @@ class ScreenWindow(GateWindow):
             self.state.prepared = prepared
             self.sample_label.setText(self.record["sample_id"] + "\n" + self.record["group"])
             self.event_label.setText(f"{prepared.sample.event_count:,} acquired events")
+            self.event_label.setToolTip(instrument_name(prepared.sample))
+            for combo in (self.range_y, self.summary_detector):
+                for i in range(combo.count()):
+                    channel = combo.itemData(i)
+                    if channel in prepared.sample.pnn_labels:
+                        combo.setItemText(i, channel_label(prepared.sample, channel))
             records = self.selected_records()
             index = records.index(self.record) if self.record in records else -1
             self.previous_sample.setEnabled(bool(records) and index != 0)
@@ -525,9 +582,17 @@ class ScreenWindow(GateWindow):
             self.sample_choice.blockSignals(False)
             self.message.setText(f"Sample not loaded: {error}")
 
+    def display_channels(self, gate):
+        return plot_channels(
+            gate,
+            self.state.recipe,
+            {"plot_type": self.plot_type.currentText(), "range_y_channel": self.range_y.currentData()},
+        )
+
     def draw_active(self, gate, parent):
         if not self.ready:
             return super().draw_active(gate, parent)
+        channels = self.display_channels(gate)
         records = self.plot_records()
         datasets = []
         for r in records:
@@ -536,19 +601,21 @@ class ScreenWindow(GateWindow):
                 (
                     r,
                     prepared.transformed.loc[
-                        masks[gate["name"] if gate["kind"] == "boolean" else gate["parent"]], gate["channels"]
+                        masks[gate["name"] if gate["kind"] == "boolean" else gate["parent"]], channels
                     ].to_numpy(),
                 )
             )
         bins = None
-        if len(gate["channels"]) == 1:
+        if len(channels) == 1:
             arrays = [d[:, 0] for _, d in datasets if len(d)]
             if arrays:
                 lo, hi = min(d.min() for d in arrays), max(d.max() for d in arrays)
                 bins = np.linspace(lo if lo != hi else lo - 1, hi if lo != hi else hi + 1, 101)
         kind = self.plot_type.currentText().lower()
+        if len(channels) == 2 and kind == "histogram":
+            kind = "density dots"
         # Group identity cannot be encoded by a pooled density color ramp.
-        if len(records) > 1 and kind == "density":
+        if len(records) > 1 and kind in {"density", "density dots"}:
             kind = "contour"
         seen_groups = set()
         for r, data in datasets:
@@ -557,7 +624,7 @@ class ScreenWindow(GateWindow):
             draw_events(
                 self.ax,
                 data,
-                gate["channels"],
+                channels,
                 kind,
                 r["color"],
                 (f"Pinned · {r['sample_id']}" if r["sample_id"] in self.pinned else group_label)
@@ -567,7 +634,7 @@ class ScreenWindow(GateWindow):
                 self.opacity.value() / 100,
                 ["count", "area", "peak"][self.normalization.currentIndex()],
                 bins,
-                limits=scatter_limits(data, gate["channels"], self.full_scatter.isChecked()),
+                limits=scatter_limits(data, channels, self.full_scatter.isChecked()),
             )
         if len(records) > 1:
             self.ax.legend(fontsize=8, loc="upper right", frameon=False)
@@ -575,27 +642,34 @@ class ScreenWindow(GateWindow):
     def finish_plot(self, gate):
         if not self.ready:
             return
+        channels = self.display_channels(gate)
         modes = [
             ["recipe", "linear", "asinh", "logicle"][c.currentIndex()] for c in [self.x_scale, self.y_scale]
         ]
-        self.plot_type.setVisible(len(gate["channels"]) == 2)
-        self.histogram_label.setVisible(len(gate["channels"]) == 1)
-        self.normalization.setEnabled(len(gate["channels"]) == 1)
-        show_points = len(gate["channels"]) == 2 and self.plot_type.currentText() == "Scatter"
+        self.plot_type.setVisible(True)
+        self.range_y.setVisible(gate["kind"] == "range" and len(channels) == 2)
+        self.range_y_label.setVisible(gate["kind"] == "range" and len(channels) == 2)
+        if len(channels) == 2 and gate["kind"] == "range":
+            self.range_y.blockSignals(True)
+            select_detector(self.range_y, channels[1])
+            self.range_y.blockSignals(False)
+        self.histogram_label.setVisible(len(channels) == 1)
+        self.normalization.setEnabled(len(channels) == 1)
+        show_points = len(channels) == 2 and self.plot_type.currentText() in {"Scatter", "Density dots"}
         self.point_size.setVisible(show_points)
         self.point_size_label.setVisible(show_points)
-        if len(gate["channels"]) == 2:
+        if len(channels) == 2 and all(c.startswith(("FSC-", "SSC-")) for c in channels):
             arrays = []
             for record in self.plot_records():
                 prepared, masks = self.session.get(record, self.state.recipe)
-                arrays.append(prepared.transformed.loc[masks[gate["parent"]], gate["channels"]].to_numpy())
+                arrays.append(prepared.transformed.loc[masks[gate["parent"]], channels].to_numpy())
             limits = scatter_limits(
-                np.concatenate(arrays) if arrays else [], gate["channels"], self.full_scatter.isChecked()
+                np.concatenate(arrays) if arrays else [], channels, self.full_scatter.isChecked()
             )
             if limits is not None:
                 self.ax.set_xlim(limits[0][0], limits[1][0])
                 self.ax.set_ylim(limits[0][1], limits[1][1])
-        apply_axes(self.ax, gate["channels"], self.state.recipe, modes)
+        apply_axes(self.ax, channels, self.state.recipe, modes, sample=self.state.prepared.sample)
         self.picked = {}
         for other in self.state.active_recipe["gates"]:
             if (
@@ -617,13 +691,13 @@ class ScreenWindow(GateWindow):
         else:
             self.help.setText(
                 self.help.text()
-                + " Scroll to zoom. Scatter displays up to 20,000 events per sample; counts use all events."
+                + " Scroll to zoom. Dots display up to 20,000 events; counts use all events. Blue → red means sparse → dense; overlays use group colors."
             )
         self.help.setToolTip(self.help.text())
         self.review_badge.setToolTip(self.note.text())
         self.edit_button.setEnabled(not preview)
         self.bounds_widget.setEnabled(not preview)
-        self.y_scale.setEnabled(len(gate["channels"]) == 2)
+        self.y_scale.setEnabled(len(self.display_channels(gate)) == 2)
         exceptions = self.state.recipe.get("sample_overrides", {}).get(self.record["sample_id"], {})
         scope = self.record["sample_id"] if self.state.sample_scope else f"all {len(self.records)} samples"
         geometry_exception = any(k in exceptions.get(gate["name"], {}) for k in ("bounds", "vertices"))
@@ -647,9 +721,86 @@ class ScreenWindow(GateWindow):
             self.request_gallery()
 
     def request_gallery(self, *_):
-        if self.ready and not self.focus_plot.isChecked() and not self.gallery_pending:
-            self.gallery_pending = True
-            QtCore.QTimer.singleShot(0, self.update_gallery)
+        if self.ready and not self.focus_plot.isChecked():
+            # A new selection/edit supersedes unfinished work. Only render after
+            # the requested recipe has exact summaries for every selected well.
+            self._gallery_work = None
+            if not self.gallery_pending:
+                self.gallery_pending = True
+                self._gallery_timer.start(0)
+
+    def _prepare_gallery(self):
+        if not self.gallery_pending:
+            return
+        if not self.isVisible() or self.focus_plot.isChecked():
+            self.gallery_pending = False
+            self._gallery_work = None
+            return
+        if self._gallery_work is None:
+            mode = self.gallery_mode.currentText()
+            gate = self.state.gate(self.active_name)
+            records = self.selected_records()
+            if mode == "Sample MFI":
+                names = {"root", *(g["name"] for g in self.state.recipe["gates"])}
+                population = (
+                    self.active_name
+                    if self.summary_follow.isChecked()
+                    else self.summary_population.currentText()
+                )
+                population = population if population in names else "root"
+                detector = self.summary_detector.currentData()
+            elif mode == "Plate map" and gate:
+                plates = sorted({r.get("plate", "Unassigned") for r in records})
+                if not plates:
+                    self.update_gallery()
+                    return
+                plate = plates[min(self.gallery_page.value(), len(plates)) - 1]
+                records = [r for r in records if r.get("plate", "Unassigned") == plate]
+                population = gate["name"]
+                detector = gate["channels"][0] if self.plate_metric.currentIndex() == 2 else None
+            elif self.gallery_mode.currentIndex() == 1 and gate:
+                population = gate["name"] if gate["kind"] == "boolean" else gate["parent"]
+                detector = tuple(self.display_channels(gate))
+            else:
+                self.update_gallery()
+                return
+            self._gallery_work = (
+                iter(records),
+                len(records),
+                copy.deepcopy(self.state.recipe),
+                population,
+                detector,
+            )
+            self._gallery_done = 0
+            # Do not leave an old recipe's plot looking current while recalculating.
+            self.gallery_figure.clear()
+            self.gallery_axes.clear()
+            self.gallery_canvas.draw_idle()
+        records, total, recipe, population, detector = self._gallery_work
+        start = time.perf_counter()
+        try:
+            while True:
+                record = next(records, None)
+                if record is None:
+                    self._gallery_work = None
+                    self.update_gallery()
+                    return
+                if isinstance(detector, tuple):
+                    self.session.plot_limits(
+                        record, recipe, population, list(detector), self.full_scatter.isChecked()
+                    )
+                else:
+                    self.session.metrics(record, recipe, population, detector)
+                self._gallery_done += 1
+                if time.perf_counter() - start >= 0.03:
+                    self.gallery_range.setText(f"Preparing comparison: {self._gallery_done}/{total} samples")
+                    self._gallery_timer.start(0)
+                    return
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            self._gallery_work = None
+            self.gallery_pending = False
+            self.gallery_range.setText("Comparison unavailable")
+            self.message.setText(f"Comparison unavailable: {error}")
 
     def update_gallery(self, *_):
         try:
@@ -700,13 +851,15 @@ class ScreenWindow(GateWindow):
         if compare and active:
             limits = []
             for r in all_items:
-                prepared, masks = self.session.get(r, self.state.recipe)
-                values = prepared.transformed.loc[masks[active["parent"]], active["channels"]].to_numpy()
-                if len(values):
-                    limits.append(
-                        scatter_limits(values, active["channels"], self.full_scatter.isChecked())
-                        or (values.min(axis=0), values.max(axis=0))
-                    )
+                extent = self.session.plot_limits(
+                    r,
+                    self.state.recipe,
+                    active["name"] if active["kind"] == "boolean" else active["parent"],
+                    self.display_channels(active),
+                    self.full_scatter.isChecked(),
+                )
+                if extent is not None:
+                    limits.append(extent)
             if limits:
                 shared_limits = (
                     np.min([v[0] for v in limits], axis=0),
@@ -723,19 +876,20 @@ class ScreenWindow(GateWindow):
             self.gallery_axes[ax] = ("sample", record["sample_id"]) if compare else ("gate", gate["name"])
             try:
                 prepared, masks = self.session.get(record, self.state.recipe)
+                channels = self.display_channels(gate)
                 data = prepared.transformed.loc[
-                    masks[gate["name"] if gate["kind"] == "boolean" else gate["parent"]], gate["channels"]
+                    masks[gate["name"] if gate["kind"] == "boolean" else gate["parent"]], channels
                 ].to_numpy()
-                individual_limits = scatter_limits(data, gate["channels"], self.full_scatter.isChecked())
+                individual_limits = scatter_limits(data, channels, self.full_scatter.isChecked())
                 density_limits = shared_limits if shared_limits is not None else individual_limits
-                draw_events(ax, data, gate["channels"], "density", record["color"], limits=density_limits)
+                draw_events(ax, data, channels, "density dots", record["color"], limits=density_limits)
                 draw_boundary(ax, gate, recipe=self.state.recipe)
                 count = int(masks[gate["name"]].sum())
                 total = int(masks[gate["parent"]].sum())
                 title = (
                     f"{record.get('condition') or record.get('label') or record['group']}\n{record['sample_id']}"
                     if compare
-                    else TITLES.get(gate["name"], gate["name"])
+                    else self.population_title(gate["name"], prepared.sample)
                 )
                 ax.set_title(
                     f"{title}\n{count:,} / {total:,}",
@@ -746,11 +900,11 @@ class ScreenWindow(GateWindow):
                     ax.set_xlim(individual_limits[0][0], individual_limits[1][0])
                     ax.set_ylim(individual_limits[0][1], individual_limits[1][1])
                 if shared_limits:
-                    for dim, setter in enumerate([ax.set_xlim, ax.set_ylim][: len(gate["channels"])]):
+                    for dim, setter in enumerate([ax.set_xlim, ax.set_ylim][: len(channels)]):
                         lo, hi = shared_limits[0][dim], shared_limits[1][dim]
                         margin = max((hi - lo) * 0.05, 0.01)
                         setter(lo - margin, hi + margin)
-                apply_axes(ax, gate["channels"], self.state.recipe, ["recipe", "recipe"])
+                apply_axes(ax, channels, self.state.recipe, ["recipe", "recipe"], sample=prepared.sample)
                 ax.tick_params(labelsize=6, pad=2)
                 ax.xaxis.label.set_size(7)
                 ax.yaxis.label.set_size(7)
@@ -876,13 +1030,14 @@ class ScreenWindow(GateWindow):
                 )
                 self.gallery_canvas.draw_idle()
                 return
-            prepared, masks = self.session.get(r, self.state.recipe)
-            count = int(masks[gate["name"]].sum())
-            parent = int(masks[gate["parent"]].sum())
             metric = self.plate_metric.currentIndex()
+            metrics = self.session.metrics(
+                r, self.state.recipe, gate["name"], gate["channels"][0] if metric == 2 else None
+            )
+            count, parent = metrics["event_count"], metrics["parent_count"]
             value = count if metric == 1 else (100 * count / parent if parent else np.nan)
             if metric == 2:
-                value = prepared.values.loc[masks[gate["name"]], gate["channels"][0]].median()
+                value = metrics["median"]
             entries.append((location, value))
             positions[location] = r["sample_id"]
         large = any(row > 7 or col > 11 for row, col in positions)
@@ -987,6 +1142,7 @@ class ScreenWindow(GateWindow):
                 "summary_statistic": self.summary_statistic.currentText(),
                 "full_scatter": self.full_scatter.isChecked(),
                 "plot_type": self.plot_type.currentText(),
+                "range_y_channel": self.range_y.currentData(),
                 "point_size": self.point_size.value(),
                 "opacity": self.opacity.value(),
                 "normalization": self.normalization.currentText(),
@@ -1010,8 +1166,11 @@ class ScreenWindow(GateWindow):
         layout = W.QVBoxLayout(dialog)
         layout.addWidget(label(self.record["sample_id"] + " · Acquired detector names", "title"))
         sample = self.state.prepared.sample
-        table = W.QTableWidget(len(sample.pnn_labels), 3)
-        table.setHorizontalHeaderLabels(["Detector (PnN)", "Marker (PnS)", "Assigned role"])
+        layout.addWidget(label("Instrument (FCS $CYT): " + instrument_name(sample)))
+        table = W.QTableWidget(len(sample.pnn_labels), 4)
+        table.setHorizontalHeaderLabels(
+            ["Detector (PnN)", "Channel / stain name", "Name source", "Assigned role"]
+        )
         roles = self.state.recipe.get("channel_roles", {})
         for i, detector in enumerate(sample.pnn_labels):
             assigned = ", ".join(
@@ -1019,8 +1178,8 @@ class ScreenWindow(GateWindow):
                 for role, spec in roles.items()
                 if spec["detector"] == detector
             )
-            marker = sample.pns_labels[i] if sample.pns_labels else ""
-            for j, value in enumerate([detector, marker, assigned]):
+            annotation = channel_annotation(sample, detector)
+            for j, value in enumerate([detector, annotation["name"], annotation["source"], assigned]):
                 table.setItem(i, j, W.QTableWidgetItem(str(value)))
         table.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(W.QHeaderView.ResizeMode.Stretch)
@@ -1065,9 +1224,9 @@ class ScreenWindow(GateWindow):
         numerator, denominator, parent = W.QComboBox(), W.QComboBox(), W.QComboBox()
         roles = self.state.recipe.get("channel_roles", {})
         for combo, role, index in [(numerator, "gfp", 0), (denominator, "cy5", 1)]:
-            combo.addItems(list(self.state.recipe["transforms"]))
-            combo.setCurrentText(
-                existing["channels"][index] if existing else roles.get(role, {}).get("detector", "")
+            add_detector_choices(combo, self.state.prepared.sample, self.state.recipe["transforms"])
+            select_detector(
+                combo, existing["channels"][index] if existing else roles.get(role, {}).get("detector", "")
             )
         parent.addItems(
             ["root"]
@@ -1117,7 +1276,7 @@ class ScreenWindow(GateWindow):
                     "name": name.text().strip(),
                     "parent": parent.currentText(),
                     "kind": "ratio",
-                    "channels": [numerator.currentText(), denominator.currentText()],
+                    "channels": [numerator.currentData(), denominator.currentData()],
                     "bounds": [float(low.text()), float(high.text())],
                     "denominator_min": float(floor.text()),
                     "reviewed": False,
@@ -1202,14 +1361,14 @@ class ScreenWindow(GateWindow):
         ]:
             widget.setObjectName(identifier)
         for combo in [x, y]:
-            combo.addItems(list(self.state.recipe["transforms"]))
-        x.setCurrentText(active["channels"][0])
-        y.setCurrentText(active["channels"][-1])
+            add_detector_choices(combo, self.state.prepared.sample, self.state.recipe["transforms"])
+        select_detector(x, active["channels"][0])
+        select_detector(y, active["channels"][-1])
         if x.currentText() == y.currentText() and y.count() > 1:
             y.setCurrentIndex((x.currentIndex() + 1) % y.count())
         if preferred_channels:
-            x.setCurrentText(preferred_channels[0])
-            y.setCurrentText(preferred_channels[1])
+            select_detector(x, preferred_channels[0])
+            select_detector(y, preferred_channels[1])
         parent.addItems(["root"] + [g["name"] for g in self.state.recipe["gates"]])
         relationship = W.QComboBox()
         relationship.setObjectName("population_relationship")
@@ -1265,7 +1424,7 @@ class ScreenWindow(GateWindow):
         def create():
             try:
                 channels = (
-                    [x.currentText()] if kind.currentText() == "range" else [x.currentText(), y.currentText()]
+                    [x.currentData()] if kind.currentText() == "range" else [x.currentData(), y.currentData()]
                 )
                 prepared, masks = self.session.get(self.record, self.state.recipe)
                 values = prepared.transformed.loc[masks[parent.currentText()], channels].to_numpy()

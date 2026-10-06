@@ -1,4 +1,4 @@
-"""Sequential batch execution with atomic output publication and provenance."""
+"""Batch execution with atomic output publication and provenance."""
 
 import hashlib
 import io
@@ -15,15 +15,26 @@ from . import flowkit
 from .acquisition import instrument_provenance
 from .engine import build_strategy, digest, evaluate, load_recipe, prepare, save_recipe, summarize, validate
 from .event_export import EventWriter
-from .plots import save_qc, save_time_qc
 from .provenance import save_snapshot, software_identity
+from .qc_jobs import QcJobs
 from .quality import sample_quality
 from .reporting import write_report
 from .samples import read_samples, sample_recipe
 from .vendor_info import vendor_identity
 
 
-def run_batch(samples, recipe_path, output):
+class AnalysisCancelled(ValueError):
+    """A cooperative stop; no partial output is published."""
+
+
+def run_batch(samples, recipe_path, output, *, workers=1, progress=None, cancelled=None):
+    def check_cancelled():
+        if cancelled is not None and cancelled():
+            raise AnalysisCancelled("Analysis cancelled; no results published")
+
+    check_cancelled()
+    if isinstance(workers, bool) or not isinstance(workers, int) or not 1 <= workers <= 8:
+        raise ValueError("QC workers must be an integer from 1 to 8")
     implementation = software_identity()
     recipe_bytes = Path(recipe_path).read_bytes()
     recipe = load_recipe(recipe_path)
@@ -39,6 +50,8 @@ def run_batch(samples, recipe_path, output):
     ):
         raise ValueError("Sample IDs must be nonempty and unique; provide at least one sample")
     records = read_samples(samples)
+    if progress is not None:
+        progress(0, len(records))
     compensation_inputs = {
         r["compensation_path"]: digest(r["compensation_path"]) for r in records if r.get("compensation_path")
     }
@@ -51,46 +64,51 @@ def run_batch(samples, recipe_path, output):
     event_writer = None
     try:
         event_writer = EventWriter(staging / "events.parquet", records, recipe)
-        for index, record in enumerate(records):
-            path = Path(record["fcs_path"])
-            if not path.is_absolute():
-                path = Path(samples).resolve().parent / path
-            before = digest(path)
-            if record.get("input_sha256") and record["input_sha256"] != before:
-                raise ValueError(f"{path}: content differs from sample-sheet fingerprint")
-            effective = sample_recipe(recipe, record)
-            effective.setdefault("display", {})["color"] = record["color"]
-            prepared = prepare(path, effective)
-            masks = evaluate(prepared, effective)
-            if digest(path) != before:
-                raise ValueError(f"{path}: input changed during analysis")
-            event_writer.write(prepared, masks, record, before)
-            stats = summarize(prepared, effective, masks)
-            stats.insert(0, "sample_id", record["sample_id"])
-            for key, value in record.items():
-                if key not in ("sample_id", "fcs_path"):
-                    stats[f"metadata:{key}"] = value
-            rows.append(stats)
-            matrix = prepared.matrix
-            provenance.append(
-                {
-                    "sample_id": record["sample_id"],
-                    "gatingml": f"gates-{index + 1:04d}.gatingml.xml",
-                    "sha256": before,
-                    "signal_space": "raw" if matrix is None else "compensated",
-                    "compensation": None
-                    if matrix is None
-                    else {"detectors": matrix.detectors, "values": matrix.matrix.tolist()},
-                    "metadata": record,
-                    "instrument": instrument_provenance(prepared.sample),
-                    "gate_overrides": recipe.get("sample_overrides", {}).get(record["sample_id"], {}),
-                    "quality": sample_quality(prepared),
-                }
-            )
-            with (staging / f"gates-{index + 1:04d}.gatingml.xml").open("wb") as handle:
-                flowkit.export_gatingml(build_strategy(effective, prepared.matrix), handle)
-            save_qc(prepared, effective, masks, staging / f"gates-{index + 1:04d}.png", record["sample_id"])
-            save_time_qc(prepared, staging / f"time-{index + 1:04d}.png")
+        with QcJobs(min(workers, len(records))) as qc:
+            for index, record in enumerate(records):
+                check_cancelled()
+                path = Path(record["fcs_path"])
+                if not path.is_absolute():
+                    path = Path(samples).resolve().parent / path
+                before = digest(path)
+                if record.get("input_sha256") and record["input_sha256"] != before:
+                    raise ValueError(f"{path}: content differs from sample-sheet fingerprint")
+                effective = sample_recipe(recipe, record)
+                effective.setdefault("display", {})["color"] = record["color"]
+                prepared = prepare(path, effective)
+                masks = evaluate(prepared, effective)
+                if digest(path) != before:
+                    raise ValueError(f"{path}: input changed during analysis")
+                event_writer.write(prepared, masks, record, before)
+                stats = summarize(prepared, effective, masks)
+                stats.insert(0, "sample_id", record["sample_id"])
+                for key, value in record.items():
+                    if key not in ("sample_id", "fcs_path"):
+                        stats[f"metadata:{key}"] = value
+                rows.append(stats)
+                matrix = prepared.matrix
+                provenance.append(
+                    {
+                        "sample_id": record["sample_id"],
+                        "gatingml": f"gates-{index + 1:04d}.gatingml.xml",
+                        "sha256": before,
+                        "signal_space": "raw" if matrix is None else "compensated",
+                        "compensation": None
+                        if matrix is None
+                        else {"detectors": matrix.detectors, "values": matrix.matrix.tolist()},
+                        "metadata": record,
+                        "instrument": instrument_provenance(prepared.sample),
+                        "gate_overrides": recipe.get("sample_overrides", {}).get(record["sample_id"], {}),
+                        "quality": sample_quality(prepared),
+                    }
+                )
+                with (staging / f"gates-{index + 1:04d}.gatingml.xml").open("wb") as handle:
+                    flowkit.export_gatingml(build_strategy(effective, prepared.matrix), handle)
+                qc.submit(prepared, effective, masks, staging, index, record["sample_id"])
+                if progress is not None:
+                    progress(index + 1, len(records))
+                check_cancelled()
+        check_cancelled()
         event_writer.close()
         event_writer = None
         if Path(recipe_path).read_bytes() != recipe_bytes or Path(samples).read_bytes() != manifest_bytes:
@@ -161,6 +179,7 @@ def run_batch(samples, recipe_path, output):
             raise ValueError("Agentflow implementation changed during analysis")
         if out.exists():
             raise ValueError("Output appeared during analysis; choose a new run directory")
+        check_cancelled()
         staging.rename(out)
     finally:
         if event_writer is not None:

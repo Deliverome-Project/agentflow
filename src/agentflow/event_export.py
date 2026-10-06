@@ -53,7 +53,20 @@ class EventWriter:
                 ).encode()
             },
         )
-        self.writer = pq.ParquetWriter(path, self.schema, compression="zstd")
+        # Constant strings are dictionary encoded before reaching the writer;
+        # materializing instrument JSON once per event can consume gigabytes.
+        self.storage_schema = pa.schema(
+            [
+                pa.field(
+                    f.name, pa.dictionary(pa.int32(), pa.string()) if pa.types.is_string(f.type) else f.type
+                )
+                for f in self.schema
+            ]
+        )
+        # The public format remains ordinary Parquet strings, not Arrow
+        # categorical columns. Preserve our provenance metadata explicitly.
+        self.writer = pq.ParquetWriter(path, self.storage_schema, compression="zstd", store_schema=False)
+        self.writer.add_key_value_metadata(self.schema.metadata)
 
     def write(self, prepared, masks, record, fingerprint):
         if not set(prepared.sample.pnn_labels) <= set(self.channels):
@@ -71,15 +84,20 @@ class EventWriter:
         for start in range(0, n, 50000):
             stop = min(n, start + 50000)
             size = stop - start
+            indices = pa.repeat(pa.scalar(0, type=pa.int32()), size)
+
+            def constant(value, indices=indices):
+                return pa.DictionaryArray.from_arrays(indices, pa.array([value], type=pa.string()))
+
             values = {
-                "sample_id": [record["sample_id"]] * size,
+                "sample_id": constant(record["sample_id"]),
                 "event_index": np.arange(start, stop, dtype=np.int64),
-                "input_sha256": [fingerprint] * size,
-                "signal_space": ["raw" if prepared.matrix is None else "compensated"] * size,
-                "instrument_json": [instrument] * size,
-                "compensation_json": [compensation] * size,
+                "input_sha256": constant(fingerprint),
+                "signal_space": constant("raw" if prepared.matrix is None else "compensated"),
+                "instrument_json": constant(instrument),
+                "compensation_json": constant(compensation),
             }
-            values.update({"metadata:" + key: [str(record.get(key, ""))] * size for key in self.metadata})
+            values.update({"metadata:" + key: constant(str(record.get(key, ""))) for key in self.metadata})
             for channel in self.channels:
                 present = channel in prepared.sample.pnn_labels
                 values["raw:" + channel] = (
@@ -89,7 +107,7 @@ class EventWriter:
                     prepared.values[channel].iloc[start:stop].to_numpy() if present else [None] * size
                 )
             values.update({"gate:" + name: mask[start:stop] for name, mask in masks.items()})
-            self.writer.write_table(pa.Table.from_pydict(values, schema=self.schema))
+            self.writer.write_table(pa.Table.from_pydict(values, schema=self.storage_schema))
 
     def close(self):
         self.writer.close()

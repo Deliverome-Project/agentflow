@@ -138,3 +138,39 @@ def test_screen_mean_uses_finite_population_events(tmp_path):
     result = screen_report(run, tmp_path / "screen", "gfp", metric="mean_signal:A", min_events=100)
     assert not result.iloc[0].qc_pass
     assert result.iloc[0].qc_population_events == 2
+
+
+def test_constant_metadata_uses_bounded_arrays_and_preserves_public_schema(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    recipe = {
+        "version": 1,
+        "compensation": {"mode": "none"},
+        "transforms": {"A": {"kind": "linear"}},
+        "gates": [],
+    }
+    path = tmp_path / "sample.fcs"
+    with path.open("wb") as handle:
+        flowio.create_fcs(handle, [1.0] * 1001, ["A"])
+    record = {"sample_id": "synthetic", "fcs_path": str(path), "annotation": "x" * 4000}
+    prepared = prepare(path, recipe)
+    writer = EventWriter(tmp_path / "events.parquet", [record], recipe)
+    expected_schema = writer.schema
+    original = writer.writer
+    sizes = []
+
+    class RecordingWriter:
+        def write_table(self, table):
+            sizes.append(table.column("metadata:annotation").nbytes)
+            original.write_table(table)
+
+    writer.writer = RecordingWriter()
+    writer.write(prepared, evaluate(prepared, recipe), record, "fingerprint")
+    original.close()
+    assert sizes[0] < 1001 * 4 + 4100
+    table = pq.read_table(tmp_path / "events.parquet")
+    assert table.schema.equals(expected_schema, check_metadata=True)
+    assert table.schema.field("metadata:annotation").type == pa.string()
+    assert table["metadata:annotation"].to_pylist() == [record["annotation"]] * 1001
+    assert table["event_index"].to_pylist() == list(range(1001))

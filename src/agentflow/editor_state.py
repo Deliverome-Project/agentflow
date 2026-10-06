@@ -21,6 +21,7 @@ class EditorState:
         self.saved = False
         self.sample_id = None
         self.sample_scope = False
+        self._mask_cache = None
 
     @property
     def dirty(self):
@@ -179,8 +180,15 @@ class EditorState:
             self.saved = False
             self.prepared = prepared
 
+    def masks(self):
+        recipe = self.active_recipe
+        cached = self._mask_cache
+        if cached is None or cached[0] is not self.prepared or cached[1] != recipe:
+            self._mask_cache = (self.prepared, copy.deepcopy(recipe), evaluate(self.prepared, recipe))
+        return self._mask_cache[2]
+
     def counts(self):
-        return {name: int(mask.sum()) for name, mask in evaluate(self.prepared, self.active_recipe).items()}
+        return {name: int(mask.sum()) for name, mask in self.masks().items()}
 
     def save(self):
         current = digest(self.path) if self.path.exists() else None

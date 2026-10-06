@@ -140,34 +140,35 @@ def analyze_sample(path, recipe):
 
 def summarize(prepared, recipe, masks):
     rows = []
+    counts = {name: int(mask.sum()) for name, mask in masks.items()}
     for gate in [{"name": "root", "parent": "root"}, *recipe["gates"]]:
-        mask, parent = masks[gate["name"]], masks[gate["parent"]]
+        mask = masks[gate["name"]]
+        count, parent_count = counts[gate["name"]], counts[gate["parent"]]
         row = {
             "gate": gate["name"],
             "experiment_label": recipe.get("experiment", {}).get("label", "analysis"),
             "is_example": recipe.get("experiment", {}).get("is_example", False),
             "reviewed": gate.get("reviewed", False) if gate["name"] != "root" else True,
             "parent": gate["parent"],
-            "count": int(mask.sum()),
-            "parent_count": int(parent.sum()),
-            "percent_parent": 100 * mask.sum() / parent.sum() if parent.any() else None,
-            "percent_total": 100 * mask.sum() / len(mask) if len(mask) else None,
+            "count": count,
+            "parent_count": parent_count,
+            "percent_parent": 100 * count / parent_count if parent_count else None,
+            "percent_total": 100 * count / len(mask) if len(mask) else None,
         }
         for channel in recipe["transforms"]:
             values = prepared.values.loc[mask, channel].to_numpy()
             finite = values[np.isfinite(values)]
             row[f"finite_signal_count:{channel}"] = len(finite)
+            quantiles = np.quantile(finite, [0.05, 0.25, 0.75, 0.95]) if len(finite) else [None] * 4
             for name, function in {
                 "median": np.median,
                 "mean": np.mean,
                 "min": np.min,
                 "max": np.max,
-                "p05": lambda x: np.quantile(x, 0.05),
-                "p25": lambda x: np.quantile(x, 0.25),
-                "p75": lambda x: np.quantile(x, 0.75),
-                "p95": lambda x: np.quantile(x, 0.95),
             }.items():
                 row[f"{name}_signal:{channel}"] = float(function(finite)) if len(finite) else None
+            for name, value in zip(["p05", "p25", "p75", "p95"], quantiles):
+                row[f"{name}_signal:{channel}"] = None if value is None else float(value)
             row[f"sd_signal:{channel}"] = float(np.std(finite, ddof=1)) if len(finite) > 1 else None
         rows.append(row)
     return pd.DataFrame(rows)

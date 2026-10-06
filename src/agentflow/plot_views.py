@@ -1,13 +1,45 @@
 """Comparison plots and reversible display axes; gate geometry stays in recipe coordinates."""
 
 import numpy as np
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, LogNorm
 from matplotlib.ticker import FixedLocator, FuncFormatter, MaxNLocator
 
+from .channel_names import channel_label as _channel_label
 from .engine import make_transform
 from .theme import BERRY
 
-DENSITY = LinearSegmentedColormap.from_list("flow_density", ["#93bab2", "#3d6b60", "#102f29"])
+DENSITY = LinearSegmentedColormap.from_list(
+    "flow_density", ["#1739d4", "#00bfff", "#00d65c", "#ffe600", "#ef1717"]
+)
+
+
+def plot_channels(gate, recipe, view=None):
+    """A second display axis does not turn a one-dimensional gate into a 2D gate."""
+    view = view or {}
+    channels = list(gate["channels"])
+    if gate["kind"] == "range" and view.get("plot_type", "Density dots") != "Histogram":
+        candidates = [view.get("range_y_channel"), "SSC-A", "FSC-A", *recipe["transforms"]]
+        other = next((c for c in candidates if c in recipe["transforms"] and c not in channels), None)
+        if other is not None:
+            channels.append(other)
+    return channels
+
+
+def density_points(data, limits=None, maximum=20000):
+    """Color deterministic display dots using all finite parent events in 128×128 bins."""
+    data = np.asarray(data)
+    data = data[np.isfinite(data).all(axis=1)]
+    if limits is not None:
+        data = data[((data >= limits[0]) & (data <= limits[1])).all(axis=1)]
+    if not len(data):
+        return data, np.empty(0)
+    counts, xe, ye = np.histogram2d(data[:, 0], data[:, 1], bins=128)
+    selected = data[subset_indices(len(data), maximum)]
+    x = np.clip(np.searchsorted(xe, selected[:, 0], side="right") - 1, 0, 127)
+    y = np.clip(np.searchsorted(ye, selected[:, 1], side="right") - 1, 0, 127)
+    density = counts[x, y]
+    order = np.argsort(density, kind="stable")
+    return selected[order], density[order]
 
 
 def subset_indices(size, maximum=20000):
@@ -20,7 +52,7 @@ def draw_events(
     ax,
     data,
     channels,
-    kind="density",
+    kind="density dots",
     color=BERRY,
     name=None,
     point_size=7,
@@ -30,6 +62,8 @@ def draw_events(
     limits=None,
 ):
     """Bin density at the displayed range; all-event gate counts are independent."""
+    if len(channels) == 2 and kind == "histogram":
+        kind = "density dots"
     if len(channels) == 1:
         bins = 100 if bins is None else bins
         counts, edges = np.histogram(data[:, 0], bins=bins)
@@ -51,7 +85,20 @@ def draw_events(
             {"count": "Events / bin", "area": "Probability density", "peak": "% of peak"}[normalization]
         )
     elif len(data):
-        if kind == "scatter":
+        if kind == "density dots":
+            selected, density = density_points(data, limits)
+            ax.scatter(
+                selected[:, 0],
+                selected[:, 1],
+                c=density,
+                cmap=DENSITY,
+                norm=LogNorm(vmin=1, vmax=max(2, density.max()) if len(density) else 2),
+                s=point_size,
+                alpha=opacity,
+                edgecolors="none",
+                rasterized=True,
+            )
+        elif kind == "scatter":
             selected = data[subset_indices(len(data))]
             ax.scatter(
                 selected[:, 0],
@@ -114,7 +161,7 @@ def display_spec(kind):
     }
 
 
-def apply_axes(ax, channels, recipe, modes):
+def apply_axes(ax, channels, recipe, modes, sample=None):
     """Axis functions change the view only, retaining canonical event/gate coordinates.
 
     Noncanonical views are inspection-only in the GUI. This avoids mistaking a
@@ -136,10 +183,16 @@ def apply_axes(ax, channels, recipe, modes):
             return raw if old is None else old.apply(raw)
 
         if i == 0:
-            ax.set_xscale("function", functions=(forward, inverse))
+            if mode == "recipe":
+                ax.set_xscale("linear")
+            else:
+                ax.set_xscale("function", functions=(forward, inverse))
             axis, limits = ax.xaxis, ax.get_xlim()
         else:
-            ax.set_yscale("function", functions=(forward, inverse))
+            if mode == "recipe":
+                ax.set_yscale("linear")
+            else:
+                ax.set_yscale("function", functions=(forward, inverse))
             axis, limits = ax.yaxis, ax.get_ylim()
         raw = np.asarray(limits) if canonical is None else canonical.inverse(np.asarray(limits))
         raw_ticks = np.array([-1e7, -1e6, -1e5, -1e4, -1e3, -100, -10, 0, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7])
@@ -170,7 +223,9 @@ def apply_axes(ax, channels, recipe, modes):
 
         axis.set_major_formatter(FuncFormatter(formatter))
         axis.set_label_text(
-            channel + " · " + (recipe["transforms"][channel]["kind"] if mode == "recipe" else mode)
+            (channel if sample is None else _channel_label(sample, channel))
+            + " · "
+            + (recipe["transforms"][channel]["kind"] if mode == "recipe" else mode)
         )
 
 

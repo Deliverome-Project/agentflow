@@ -12,9 +12,9 @@ from matplotlib.widgets import RectangleSelector, SpanSelector
 from PySide6 import QtCore, QtGui
 from PySide6 import QtWidgets as W
 
+from .channel_names import add_detector_choices, channel_label
 from .compensation import load_matrix
 from .editor_state import EditorState
-from .engine import evaluate
 from .gate_selectors import POLYGON_HELP, GatePolygonSelector
 from .plots import draw_population
 from .population_tree import PopulationTree
@@ -326,6 +326,15 @@ class GateWindow(W.QMainWindow):
             ]
             self.state.geometry(self.active_name, "bounds", bounds)
 
+    def population_title(self, name, sample=None):
+        gate = self.state.gate(name)
+        if gate and gate.get("label"):
+            return gate["label"]
+        sample = sample if sample is not None else self.state.prepared.sample
+        if gate and name in gate.get("channels", []) and name in sample.pnn_labels:
+            return channel_label(sample, name)
+        return TITLES.get(name, name.replace("_", " "))
+
     def show_gate(self, name):
         self.active_name = name
         if self.selector:
@@ -337,7 +346,7 @@ class GateWindow(W.QMainWindow):
         mapping = self.state.recipe.get("channel_roles", {}).get(name)
         uncertain = mapping is not None and not mapping.get("confirmed", False)
         self.title.setText(
-            TITLES.get(name, gate.get("label", name.replace("_", " ")) if gate else name)
+            self.population_title(name)
             + (" candidate" if uncertain else "")
         )
         self.bounds_widget.setVisible(bool(gate and gate["kind"] == "range"))
@@ -357,7 +366,7 @@ class GateWindow(W.QMainWindow):
                 for i in self.state.prepared.sample.fluoro_indices
                 if re.sub(r"-[AHW]$", "", self.state.prepared.sample.pnn_labels[i]) not in used
             ]
-            self.channel.addItems(available)
+            add_detector_choices(self.channel, self.state.prepared.sample, available)
             self.confirm_mapping.setEnabled(bool(available))
             if not available:
                 self.pending_reason.setText(
@@ -375,14 +384,17 @@ class GateWindow(W.QMainWindow):
             "Parent: "
             + TITLES.get(gate["parent"], gate["parent"]).replace("root", "All events")
             + "  ·  "
-            + " × ".join(gate["channels"])
+            + " × ".join(channel_label(self.state.prepared.sample, c) for c in gate["channels"])
         )
         if uncertain:
             self.subtitle.setText(self.subtitle.text() + "  ·  Dye mapping unconfirmed")
-        parent = evaluate(self.state.prepared, self.state.active_recipe)[gate["parent"]]
+        parent = self.state.masks()[gate["parent"]]
         self.draw_active(gate, parent)
         for axis, channel in zip((self.ax.xaxis, self.ax.yaxis), gate["channels"]):
-            axis.set_label_text(f"{channel}  ·  {self.state.recipe['transforms'][channel]['kind']}")
+            axis.set_label_text(
+                f"{channel_label(self.state.prepared.sample, channel)}  ·  "
+                f"{self.state.recipe['transforms'][channel]['kind']}"
+            )
         kind = gate["kind"]
         if kind == "polygon":
             self.ax.update_datalim(gate["vertices"])
@@ -468,7 +480,9 @@ class GateWindow(W.QMainWindow):
         self.canvas.draw_idle()
 
     def draw_active(self, gate, parent):
-        draw_population(self.ax, self.state.prepared, gate, parent)
+        draw_population(
+            self.ax, self.state.prepared, gate, parent, self.state.recipe.get("display"), self.state.recipe
+        )
 
     def finish_plot(self, gate):
         pass
@@ -489,7 +503,7 @@ class GateWindow(W.QMainWindow):
                 parent_count = counts[gate["parent"]]
                 percent = f"{100 * counts[name] / parent_count:.2f}%" if parent_count else "Not available"
                 tooltip += f"\nParent: {gate['parent']} · {percent} of parent\nDetectors: {', '.join(gate['channels'])}"
-            self.gates.set_population_text(i, TITLES.get(name, name.replace("_", " ")), detail, tooltip)
+            self.gates.set_population_text(i, self.population_title(name), detail, tooltip)
         self.gates.doItemsLayout()
         if self.gates.currentItem():
             self.gates.scrollToItem(self.gates.currentItem())
@@ -581,7 +595,7 @@ class GateWindow(W.QMainWindow):
 
     def assign(self):
         if self.confirm_mapping.isChecked():
-            self.perform(lambda: self.state.assign(self.active_name, self.channel.currentText()))
+            self.perform(lambda: self.state.assign(self.active_name, self.channel.currentData()))
 
     def rename_population(self):
         try:
