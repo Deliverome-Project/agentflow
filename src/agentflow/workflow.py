@@ -10,6 +10,7 @@ import numpy as np
 
 from ._vendor import flowkit as fk
 from .acquisition import instrument_provenance
+from .channel_names import channel_annotation
 from .compensation import load_matrix
 from .engine import evaluate, prepare
 from .recipes import save_recipe, validate
@@ -34,7 +35,10 @@ def inspect_sample(path):
         }
     return {
         "events": sample.event_count,
-        "channels": [{"detector": n, "marker": m} for n, m in zip(sample.pnn_labels, sample.pns_labels)],
+        "channels": [
+            {**channel_annotation(sample, n), "marker": m}
+            for n, m in zip(sample.pnn_labels, sample.pns_labels)
+        ],
         "instrument": metadata.get("cyt"),
         "acquisition": instrument_provenance(sample),
         "spillover": matrix_info,

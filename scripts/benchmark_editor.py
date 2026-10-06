@@ -67,6 +67,15 @@ def main():
     times["edit_gate_handler"] = time.perf_counter() - started
     settle()
     times["edit_gate_complete"] = time.perf_counter() - started
+    for name, action in [
+        ("compare_samples_first", lambda: window.gallery_mode.setCurrentIndex(1)),
+        ("compare_samples_next_page", lambda: window.gallery_page.setValue(2)),
+        ("compare_samples_redraw", window.request_gallery),
+    ]:
+        started = time.perf_counter()
+        action()
+        settle()
+        times[name] = time.perf_counter() - started
     window.grab().save(str(args.out / "editor.png"))
     window.discarding = True
     window.close()

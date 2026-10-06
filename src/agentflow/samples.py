@@ -72,6 +72,29 @@ class SampleSession:
         self.prepared = OrderedDict()
         self.gated = OrderedDict()
         self.summaries = OrderedDict()
+        self.plot_extents = OrderedDict()
+
+    def plot_limits(self, record, recipe, population, channels, full=False):
+        """Retain small display extents when events leave the bounded cache."""
+        from .plot_views import scatter_limits
+
+        _, _, _, gate_key = self._context(record, recipe)
+        key = (gate_key, population, tuple(channels), full)
+        if key not in self.plot_extents:
+            prepared, masks = self.get(record, recipe)
+            data = prepared.transformed.loc[masks[population], channels].to_numpy()
+            data = data[np.isfinite(data).all(axis=1)]
+            limits = None
+            if len(data):
+                limits = scatter_limits(data, channels, full)
+                if limits is None:
+                    limits = (data.min(axis=0), data.max(axis=0))
+            self.plot_extents[key] = limits
+            while len(self.plot_extents) > self.metric_limit:
+                self.plot_extents.popitem(last=False)
+        self.plot_extents.move_to_end(key)
+        limits = self.plot_extents[key]
+        return None if limits is None else tuple(v.copy() for v in limits)
 
     def _context(self, record, recipe):
         recipe = sample_recipe(recipe, record)

@@ -38,27 +38,35 @@ it is not a measurement of physical display latency. It requires the GUI extra.
 
 Measured October 5, 2026 on macOS 26.3.1, ARM64, eight logical CPUs, 16 GiB RAM,
 Python 3.11.5. Baseline: dev commit `5cf360e`; optimized runs reused exactly the
-same synthetic FCS files. Times below exclude profiling overhead.
+same synthetic FCS files. Times below exclude profiling overhead. The final batch
+uses the new density-dot QC defaults; the earlier performance-only implementation
+measured 108.25 s with its older plots. The final run also includes the verified
+Tornado 6.5.9 and urllib3 2.8.0 security updates.
 
 | Operation | Before | After | Interpretation |
 | --- | ---: | ---: | --- |
-| Full 96-well run, including event export and every QC image | 304.05 s | 108.25 s | 2.81× faster; serial baseline, four rendering workers after |
-| Unchanged plate signal summary | 16.66 s | 0.020 s | About 850× faster after the initial scan |
-| First plate signal summary | 17.27 s | 17.75 s | Initial all-event computation is not eliminated |
-| Plate summary after changing its relevant gate | 16.37 s | 18.04 s | Recalculation remains necessary; editor yields between samples |
-| Full statistics for one well | 0.162 s | 0.112 s | Combined quantiles reduce repeated work |
+| Full 96-well run, including event export and every QC image | 304.05 s | 115.53 s | 2.63× faster, including final density-dot QC; four rendering workers |
+| Unchanged plate signal summary | 16.66 s | 0.024 s | About 700× faster after the initial scan |
+| First plate signal summary | 17.27 s | 21.62 s | Initial all-event computation is not eliminated |
+| Plate summary after changing its relevant gate | 16.37 s | 21.13 s | Recalculation remains necessary; editor yields between samples |
+| Full statistics for one well | 0.162 s | 0.114 s | Combined quantiles reduce repeated work |
 
-Offscreen Qt measurements on the same 96-well fixture:
+Offscreen Qt measurements on the same 96-well fixture, with the final density-dot default:
 
 | Editor action | Before | After |
 | --- | ---: | ---: |
-| Open and finish first comparison | 43.36 s | 19.23 s |
-| Switch sample, including completed comparison redraw | 22.39 s | 0.44 s |
-| Redraw unchanged view | 24.95 s | 0.25 s |
-| Select another population | 23.80 s | 0.14 s |
-| Gate edit handler returns control | 0.52 s | 0.21 s |
-| Gate edit's whole-plate comparison finishes | 20.27 s | 19.66 s |
-| Longest opening event-loop heartbeat gap | 23.77 s | 0.90 s |
+| Open and finish first comparison | 43.36 s | 20.76 s |
+| Switch sample, including completed comparison redraw | 22.39 s | 0.62 s |
+| Redraw unchanged view | 24.95 s | 0.46 s |
+| Select another population | 23.80 s | 0.35 s |
+| Gate edit handler returns control | 0.52 s | 0.29 s |
+| Gate edit's whole-plate comparison finishes | 20.27 s | 18.18 s |
+| Longest opening event-loop heartbeat gap | 23.77 s | 1.27 s |
+
+The final sample-comparison gallery took 18.48 s for its first all-plate extent
+calculation, 1.57 s to load the next four-sample page, and 0.75 s to redraw that
+page. Extents remain cached when events are evicted, so paging no longer rereads
+the entire plate.
 
 The heartbeat includes initial construction and rendering, and samples every
 20 ms. It shows reduced blocking, not a guaranteed frame rate. A gate edit still
@@ -72,7 +80,8 @@ and memory pressure. An intermediate implementation that still materialized
 those strings was stopped; it is not included in the after timings.
 
 These are individual runs on an active workstation, not isolated repeated
-trials or latency guarantees. Tests ran during part of the baseline batch, so
+trials or latency guarantees. Tests ran during part of the baseline batch and an isolated package smoke check
+overlapped the start of the final summary scan, so
 its exact speedup should be confirmed on Brenna's workstation. The reproducible
 scripts allow the same measurements with different event counts and worker counts.
 
@@ -84,7 +93,11 @@ scripts allow the same measurements with different event counts and worker count
   is resident. Relevant ancestor and Boolean-reference geometry, compensation,
   transforms, file identity/change metadata and declared fingerprints form the
   cache keys. Display and review changes do not invalidate numerical results.
-- Prepare plate-map and MFI comparisons incrementally in the Qt event loop,
+- Cache up to 4,096 compact sample plot extents independently of event arrays;
+  file identity, effective gates, compensation, transforms, population, channels
+  and full-range selection invalidate them. Comparison pages load only their
+  visible samples once the extents are available.
+- Prepare plate-map, MFI and sample-gallery comparisons incrementally in the Qt event loop,
   yielding after approximately 30 ms or one expensive sample. A newer request
   cancels unfinished work; old plots are cleared while preparing. A single large
   sample can still take longer than 30 ms. No partial plate is presented as a
@@ -116,14 +129,14 @@ scripts allow the same measurements with different event counts and worker count
 
 The first view of a plate and changes that affect its selected population still
 require all-event analysis. Caching accelerates repeated inspection rather than
-approximating counts. Overlaying many samples and computing comparison-gallery
+approximating counts. Overlaying many samples and the first computation of comparison-gallery
 limits remain more expensive than inspecting a single sample. Event cache
 capacity is bounded by sample count, not bytes; very large FCS files can still
 use substantial memory. Rendering workers add bounded additional resident samples.
 
 For larger workloads, measure peak memory and event-export versus rendering time
 before increasing worker count. Potential next steps are an explicit byte budget
-for event caches, cached comparison extents, and per-stage export profiling. Do not
+for event caches and per-stage export profiling. Do not
 silently drop QC, omit events, reduce numeric precision, or change compensation
 to achieve a faster benchmark.
 
@@ -138,12 +151,14 @@ metadata. A streaming comparison verified every field in all 9,600,000 event
 rows, including raw and compensated detector values, original indices and all
 gate memberships. Implementation provenance appropriately changes between runs.
 
-After integrating the concurrent gate-usability update from main,
-`uv run ruff check .` passed and `uv run pytest -q` passed all 126 tests.
+On the final code, including the gate-usability update from main, density-dot
+views, metadata labels and security fixes, `uv run ruff check .` passed and
+`uv run pytest -q` passed all 160 tests.
 Two Matplotlib tight-layout warnings occur in the small-window gallery test.
 Regression coverage includes cache eviction and invalidation, Boolean
 references, transforms, compensation-file changes, superseding pending GUI
 work, public Parquet schema preservation, bounded metadata arrays, identical
 serial/parallel outputs and atomic cleanup after a rendering-worker failure.
-The recorded editor timings precede that gate-usability integration; the
-numerical and batch-processing changes are unchanged by the integration.
+The final editor timings include the integrated gate-usability changes. Density
+view and metadata tests additionally verify that detector identities and exact
+counts remain independent of names, point caps and display axes.

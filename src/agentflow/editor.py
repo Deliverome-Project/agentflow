@@ -138,12 +138,16 @@ class GateEditor:
             return
         self.ax.set_axis_on()
         parent = evaluate(self.prepared, self.recipe)[self.gate["parent"]]
-        draw_population(self.ax, self.prepared, self.gate, parent)
-        x = self.gate["channels"][0]
-        self.ax.set_xlabel(f"{x} ({self.recipe['transforms'][x]['kind']})")
-        if len(self.gate["channels"]) == 2:
-            y = self.gate["channels"][1]
-            self.ax.set_ylabel(f"{y} ({self.recipe['transforms'][y]['kind']})")
+        from .channel_names import channel_label
+        from .plot_views import plot_channels
+
+        view = self.recipe.get("display", {})
+        draw_population(self.ax, self.prepared, self.gate, parent, view, self.recipe)
+        channels = plot_channels(self.gate, self.recipe, view)
+        for channel, setter in zip(channels, [self.ax.set_xlabel, self.ax.set_ylabel]):
+            setter(
+                f"{channel_label(self.prepared.sample, channel)} ({self.recipe['transforms'][channel]['kind']})"
+            )
         self.heading.set_text(f"{self.gate.get('label', name)} | parent: {self.gate['parent']}")
         self.detail.set_text(
             self.gate.get("note", "Fixed transformed coordinates; previews count all events.")

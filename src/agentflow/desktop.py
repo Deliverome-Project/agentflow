@@ -12,6 +12,7 @@ from matplotlib.widgets import RectangleSelector, SpanSelector
 from PySide6 import QtCore, QtGui
 from PySide6 import QtWidgets as W
 
+from .channel_names import add_detector_choices, channel_label
 from .compensation import load_matrix
 from .editor_state import EditorState
 from .gate_selectors import POLYGON_HELP, GatePolygonSelector
@@ -356,7 +357,7 @@ class GateWindow(W.QMainWindow):
                 for i in self.state.prepared.sample.fluoro_indices
                 if re.sub(r"-[AHW]$", "", self.state.prepared.sample.pnn_labels[i]) not in used
             ]
-            self.channel.addItems(available)
+            add_detector_choices(self.channel, self.state.prepared.sample, available)
             self.confirm_mapping.setEnabled(bool(available))
             if not available:
                 self.pending_reason.setText(
@@ -374,7 +375,7 @@ class GateWindow(W.QMainWindow):
             "Parent: "
             + TITLES.get(gate["parent"], gate["parent"]).replace("root", "All events")
             + "  ·  "
-            + " × ".join(gate["channels"])
+            + " × ".join(channel_label(self.state.prepared.sample, c) for c in gate["channels"])
         )
         if uncertain:
             self.subtitle.setText(self.subtitle.text() + "  ·  Dye mapping unconfirmed")
@@ -467,7 +468,9 @@ class GateWindow(W.QMainWindow):
         self.canvas.draw_idle()
 
     def draw_active(self, gate, parent):
-        draw_population(self.ax, self.state.prepared, gate, parent)
+        draw_population(
+            self.ax, self.state.prepared, gate, parent, self.state.recipe.get("display"), self.state.recipe
+        )
 
     def finish_plot(self, gate):
         pass
@@ -580,7 +583,7 @@ class GateWindow(W.QMainWindow):
 
     def assign(self):
         if self.confirm_mapping.isChecked():
-            self.perform(lambda: self.state.assign(self.active_name, self.channel.currentText()))
+            self.perform(lambda: self.state.assign(self.active_name, self.channel.currentData()))
 
     def rename_population(self):
         try:

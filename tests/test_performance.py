@@ -83,6 +83,27 @@ def test_recipe_axes_are_affine_but_ticks_remain_signal_units(demo):  # noqa: F8
     assert ax.xaxis.get_major_formatter()(0, 0) is not None
 
 
+def test_gallery_extents_survive_eviction_and_invalidate(demo, monkeypatch):  # noqa: F811
+    records, recipe = inputs(demo)
+    session = SampleSession(records, limit=1)
+    channels = ["FSC-A", "SSC-A"]
+    limits = [session.plot_limits(r, recipe, "cells", channels) for r in records]
+    assert len(session.prepared) == 1
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("reload")
+
+    monkeypatch.setattr(session, "get", unexpected)
+    for r, expected in zip(records, limits):
+        np.testing.assert_array_equal(session.plot_limits(r, recipe, "cells", channels), expected)
+    changed = copy.deepcopy(recipe)
+    changed["gates"][0]["vertices"][0][0] += 1
+    with pytest.raises(AssertionError, match="reload"):
+        session.plot_limits(records[0], changed, "cells", channels)
+    with pytest.raises(AssertionError, match="reload"):
+        session.plot_limits(records[0], recipe, "cells", channels, full=True)
+
+
 def test_statistics_match_independent_numpy_calculations(demo):  # noqa: F811
     records, recipe = inputs(demo)
     prepared = prepare(records[0]["fcs_path"], recipe)

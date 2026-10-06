@@ -4,6 +4,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolb
 from matplotlib.figure import Figure
 from PySide6 import QtWidgets as W
 
+from .channel_names import add_detector_choices, select_detector
 from .desktop import button, label
 from .plot_views import apply_axes, draw_events
 
@@ -21,11 +22,11 @@ class ScatterDialog(W.QDialog):
         self.population.setCurrentText(workbench.active_name)
         channels = list(workbench.state.recipe["transforms"])
         for combo in (self.x, self.y):
-            combo.addItems(channels)
+            add_detector_choices(combo, workbench.state.prepared.sample, channels)
         roles = workbench.state.recipe.get("channel_roles", {})
         for combo, role, fallback in [(self.x, "gfp", channels[0]), (self.y, "cy5", channels[-1])]:
-            combo.setCurrentText(roles.get(role, {}).get("detector", fallback))
-        self.style.addItems(["Scatter", "Density", "Contour"])
+            select_detector(combo, roles.get(role, {}).get("detector", fallback))
+        self.style.addItems(["Density dots", "Scatter", "Density", "Contour"])
         for title, widget in [
             ("Population", self.population),
             ("X detector", self.x),
@@ -53,11 +54,11 @@ class ScatterDialog(W.QDialog):
             return
         w = self.workbench
         prepared, masks = w.session.get(w.record, w.state.recipe)
-        channels = [self.x.currentText(), self.y.currentText()]
+        channels = [self.x.currentData(), self.y.currentData()]
         data = prepared.transformed.loc[masks[self.population.currentText()], channels].to_numpy()
         self.ax.clear()
         draw_events(self.ax, data, channels, self.style.currentText().lower(), w.record["color"])
-        apply_axes(self.ax, channels, w.state.recipe, ["recipe", "recipe"])
+        apply_axes(self.ax, channels, w.state.recipe, ["recipe", "recipe"], sample=prepared.sample)
         self.count.setText(
             f"{len(data):,} events in {self.population.currentText()} · scatter displays up to 20,000"
         )
@@ -65,5 +66,5 @@ class ScatterDialog(W.QDialog):
 
     def create_population(self):
         self.workbench.new_population(
-            "rectangle", [self.x.currentText(), self.y.currentText()], self.population.currentText()
+            "rectangle", [self.x.currentData(), self.y.currentData()], self.population.currentText()
         )

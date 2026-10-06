@@ -228,6 +228,14 @@ CI are documented in [Security checks](docs/security-checks.md).
 
 ### Editing gate shapes and names
 
+Plots now default to density-colored dots: blue is sparse and red is dense.
+Threshold gates open against a second detector (usually SSC-A); choose
+**Plot settings → Histogram** for a one-dimensional view, or **Threshold plot Y**
+to change the second axis. Counts always use every event. Axes and selectors show
+FCS stain names alongside the original detector IDs, with the supplied CytoFLEX
+aliases as a fallback. See [channel names and MA900 metadata](docs/channel-labels.md)
+and [96-well performance measurements](docs/performance.md).
+
 In **Edit gate** mode, drag inside a rectangle or completed polygon to move the
 whole gate; drag its handles to reshape it. For polygons, **Ctrl+click** inserts a
 vertex on the nearest edge and right-clicking a vertex removes it. To draw a new

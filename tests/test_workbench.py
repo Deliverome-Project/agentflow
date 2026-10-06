@@ -88,7 +88,43 @@ def test_dummy_live_threshold_signal_units_and_save(window):
     assert "display" in json.loads(window.state.path.read_text())
 
 
+def test_default_density_threshold_view_and_histogram_preserve_analysis(window):
+    assert window.plot_type.currentText() == "Density dots"
+    assert window.display_channels(window.state.gate("live")) == ["BV1-A", "SSC-A"]
+    counts = window.state.counts()
+    gates = copy.deepcopy(window.state.recipe["gates"])
+    assert "SSC-A" in window.ax.get_ylabel()
+    assert len(window.ax.collections) > 0
+    window.range_y.setCurrentIndex(window.range_y.findData("FSC-A"))
+    assert "FSC-A" in window.ax.get_ylabel()
+    window.plot_type.setCurrentText("Histogram")
+    assert "Events" in window.ax.get_ylabel()
+    window.plot_type.setCurrentText("Density dots")
+    assert window.state.counts() == counts
+    assert window.state.recipe["gates"] == gates
+    window.save_changes()
+    saved = json.loads(window.state.path.read_text())
+    assert saved["display"]["plot_type"] == "Density dots"
+    assert saved["display"]["range_y_channel"] == "FSC-A"
+
+
+def test_detector_choices_show_names_but_store_raw_ids(window):
+    s = window.state.prepared.sample
+    index = s.pnn_labels.index("BL1-A")
+    old = s.pns_labels[index]
+    try:
+        s.pns_labels[index] = "FITC reporter"
+        window.show_gate("gfp")
+        assert "FITC reporter" in window.ax.get_xlabel()
+        i = window.summary_detector.findData("BL1-A")
+        assert "FITC reporter" in window.summary_detector.itemText(i)
+        assert window.summary_detector.itemData(i) == "BL1-A"
+    finally:
+        s.pns_labels[index] = old
+
+
 def test_histogram_drag_keeps_threshold_and_zoom(window):
+    window.plot_type.setCurrentText("Histogram")
     from matplotlib.backend_bases import MouseEvent
 
     from agentflow.engine import load_recipe
@@ -116,6 +152,7 @@ def test_histogram_drag_keeps_threshold_and_zoom(window):
 
 
 def test_overlay_scatter_density_axes_and_counts(window):
+    window.plot_type.setCurrentText("Scatter")
     window.gates.setCurrentRow(0)
     before = copy.deepcopy(window.state.recipe)
     counts = window.state.counts()
