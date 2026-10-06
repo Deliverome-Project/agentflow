@@ -889,7 +889,7 @@ class ScreenWindow(GateWindow):
                 title = (
                     f"{record.get('condition') or record.get('label') or record['group']}\n{record['sample_id']}"
                     if compare
-                    else TITLES.get(gate["name"], gate["name"])
+                    else self.population_title(gate["name"], prepared.sample)
                 )
                 ax.set_title(
                     f"{title}\n{count:,} / {total:,}",

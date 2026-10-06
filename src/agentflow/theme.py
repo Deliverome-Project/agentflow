@@ -42,10 +42,10 @@ def desktop_style():
     QMainWindow, QDialog, QWidget#root, QWidget#analysis_panel {{ background: {BG}; }}
     QLabel {{ background: transparent; }}
     QLabel#brand {{ font-family: "Playfair Display"; font-size: 28px; color: {BERRY}; }}
-    QLabel#title {{ font-family: "Playfair Display"; font-size: 27px; }}
+    QLabel#title {{ font-family: "Manrope"; font-size: 27px; }}
     QLabel#muted {{ color: {MUTED}; }}
     QLabel#eyebrow {{ color: {BERRY}; font-size: 11px; font-weight: 600; }}
-    QLabel#metric {{ font-family: "Playfair Display"; font-size: 27px; color: {BERRY}; }}
+    QLabel#metric {{ font-family: "Manrope"; font-size: 27px; color: {BERRY}; }}
     QLabel#badge {{ background: {SOFT}; color: {BERRY}; border-radius: 6px; padding: 6px 10px; }}
     QFrame#card {{ background: white; border: 1px solid {LINE}; border-radius: 12px; }}
     QTreeWidget {{ background: transparent; border: none; outline: none; }}

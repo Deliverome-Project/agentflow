@@ -123,6 +123,27 @@ def test_detector_choices_show_names_but_store_raw_ids(window):
         s.pns_labels[index] = old
 
 
+def test_detector_named_population_uses_metadata_without_changing_gate_id(window):
+    sample = window.state.prepared.sample
+    index = sample.pnn_labels.index("BL1-A")
+    old = sample.pns_labels[index]
+    try:
+        sample.pns_labels[index] = "FITC reporter"
+        window.state.rename_population("gfp", "BL1-A")
+        candidate = copy.deepcopy(window.state.recipe)
+        next(g for g in candidate["gates"] if g["name"] == "BL1-A").pop("label")
+        window.state.apply(candidate)
+        window.show_gate("BL1-A")
+        assert window.title.text() == "FITC reporter · BL1-A"
+        assert window.state.gate("BL1-A")["channels"] == ["BL1-A"]
+        assert "FITC reporter" in window.ax.get_xlabel()
+        window.state.rename_population("BL1-A", "My population")
+        window.show_gate("My population")
+        assert window.title.text() == "My population"
+    finally:
+        sample.pns_labels[index] = old
+
+
 def test_histogram_drag_keeps_threshold_and_zoom(window):
     window.plot_type.setCurrentText("Histogram")
     from matplotlib.backend_bases import MouseEvent

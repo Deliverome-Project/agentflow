@@ -326,6 +326,15 @@ class GateWindow(W.QMainWindow):
             ]
             self.state.geometry(self.active_name, "bounds", bounds)
 
+    def population_title(self, name, sample=None):
+        gate = self.state.gate(name)
+        if gate and gate.get("label"):
+            return gate["label"]
+        sample = sample if sample is not None else self.state.prepared.sample
+        if gate and name in gate.get("channels", []) and name in sample.pnn_labels:
+            return channel_label(sample, name)
+        return TITLES.get(name, name.replace("_", " "))
+
     def show_gate(self, name):
         self.active_name = name
         if self.selector:
@@ -337,7 +346,7 @@ class GateWindow(W.QMainWindow):
         mapping = self.state.recipe.get("channel_roles", {}).get(name)
         uncertain = mapping is not None and not mapping.get("confirmed", False)
         self.title.setText(
-            TITLES.get(name, gate.get("label", name.replace("_", " ")) if gate else name)
+            self.population_title(name)
             + (" candidate" if uncertain else "")
         )
         self.bounds_widget.setVisible(bool(gate and gate["kind"] == "range"))
@@ -382,7 +391,10 @@ class GateWindow(W.QMainWindow):
         parent = self.state.masks()[gate["parent"]]
         self.draw_active(gate, parent)
         for axis, channel in zip((self.ax.xaxis, self.ax.yaxis), gate["channels"]):
-            axis.set_label_text(f"{channel}  ·  {self.state.recipe['transforms'][channel]['kind']}")
+            axis.set_label_text(
+                f"{channel_label(self.state.prepared.sample, channel)}  ·  "
+                f"{self.state.recipe['transforms'][channel]['kind']}"
+            )
         kind = gate["kind"]
         if kind == "polygon":
             self.ax.update_datalim(gate["vertices"])
@@ -491,7 +503,7 @@ class GateWindow(W.QMainWindow):
                 parent_count = counts[gate["parent"]]
                 percent = f"{100 * counts[name] / parent_count:.2f}%" if parent_count else "Not available"
                 tooltip += f"\nParent: {gate['parent']} · {percent} of parent\nDetectors: {', '.join(gate['channels'])}"
-            self.gates.set_population_text(i, TITLES.get(name, name.replace("_", " ")), detail, tooltip)
+            self.gates.set_population_text(i, self.population_title(name), detail, tooltip)
         self.gates.doItemsLayout()
         if self.gates.currentItem():
             self.gates.scrollToItem(self.gates.currentItem())
