@@ -8,7 +8,7 @@ parity or real-sample validation.
 
 | Workflow | FlowJo documentation | Agentflow decision |
 |---|---|---|
-| Choose a shape near the data | Graph-window gating tools | Create a named draft with Choose in plot; show Gate type immediately above the canvas |
+| Choose a shape near the data | Graph-window gating tools | Create a named unfinished population with Choose in plot; show Gate type immediately above the canvas |
 | Change an existing shape | Selected-gate context menu supports conversion | Visible rectangle/polygon/range selector; retain hierarchy and sample exceptions; Undo restores the transaction |
 | Refine a polygon | Drag individual vertices and move whole gates | Retain dragging and Ctrl+click; expose Add point as a one-click insertion mode and Redraw beside it |
 | See impact on descendants | Gate edits recalculate child statistics | Continue using native FlowKit masks and all events; invalidate dependent review status |
@@ -22,10 +22,11 @@ Agentflow's Add point is a response to user feedback, not a claim of FlowJo pari
 
 ## Scientific and interaction boundaries
 
-Choose in plot uses a provisional rectangle, not an ungated population. The dialog
-states its 10th–90th percentile initialization; displayed counts refer to that
-boundary until it is replaced. Saved draft gates remain executable like existing
-Agentflow drafts; users must review them before interpreting results.
+Choose in plot now stores an unfinished population with no geometry or count.
+It can be saved and recovered, but blocks execution and gate export until drawn
+or deleted. Existing completed gates retain their prior boundary while a
+replacement is being drawn; Escape restores it. Completed but unreviewed gates
+remain distinct from unfinished populations.
 
 Conversion operates in recipe coordinates. Polygon-to-rectangle uses its bounding
 box and range conversion projects onto X; neither promises preserved membership.
@@ -37,15 +38,18 @@ the GUI. The polygon edge-distance calculation chooses an editing handle only.
 
 ## Remaining priorities
 
-1. Orthogonal quadrants for two-reporter screens, with boundary conservation tests.
-2. A searchable sample table and clear template/group ownership before adding
-   overlapping analysis groups or bulk exception promotion.
-3. A reusable report-layout and endpoint builder for consistent sample comparisons.
-4. Usability review with Brenna and Maria on representative controls, especially
+1. Usability review with Brenna and Maria on representative controls, especially
    draft visibility, conversion expectations and trackpad vertex editing.
+2. Clear template/group ownership before adding overlapping analysis groups or
+   bulk exception promotion; background loading for individual large FCS files.
+3. A reusable report-layout and endpoint builder for consistent sample comparisons.
+4. Interactive compensation cleanup and representative scientific validation.
 
-These remain follow-up work; this change does not add ellipses, quadrants,
-freehand/autogating, report boards or FlowJo workspace import. Existing tree,
+Linked orthogonal quadrants (native FlowKit rectangles), a searchable sample
+review queue, control comparison, parent highlighting, checkpoints/recovery and
+navigation improvements now address the first workspace usability priorities.
+Ellipses, freehand/autogating, report boards and FlowJo workspace import remain
+follow-up work. Existing tree,
 parent navigation, ancestry gallery, display previews, scope controls and all-event
 statistics already cover the immediate review workflow. The broader roadmap is
 in [workspace workflows](workspace-workflows.md). Automated verification uses

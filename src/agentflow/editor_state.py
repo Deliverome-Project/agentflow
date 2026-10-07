@@ -8,9 +8,10 @@ from .engine import digest, evaluate, prepare, save_recipe, validate
 from .overrides import effective_recipe
 from .provenance import save_snapshot
 from .workflow import add_reporter, mark_unreviewed
+from .workspace_state import WorkspaceState
 
 
-class EditorState:
+class EditorState(WorkspaceState):
     def __init__(self, prepared, recipe, path):
         self.prepared = prepared
         self.recipe = copy.deepcopy(recipe)
@@ -18,6 +19,9 @@ class EditorState:
         self.path = Path(path)
         self.original_hash = digest(path) if self.path.exists() else None
         self.history, self.future = [], []
+        self.history_labels, self.future_labels = [], []
+        self.recovery_error = None
+        self.recovery_pending = self.recovery_path.exists()
         self.saved = False
         self.sample_id = None
         self.sample_scope = False
@@ -27,7 +31,7 @@ class EditorState:
     def dirty(self):
         return self.recipe != self.initial
 
-    def apply(self, candidate, reprepare=False):
+    def apply(self, candidate, reprepare=False, label="gate edit"):
         validate(candidate)
         if candidate == self.recipe:
             return
@@ -38,11 +42,18 @@ class EditorState:
                 self.prepared = prepare(self.prepared.sample, self.recipe)
                 raise
         self.history.append(copy.deepcopy(self.recipe))
+        self.history_labels.append(label)
+        self.future_labels.clear()
         self.future.clear()
         self.recipe = candidate
         self.saved = False
         if reprepare:
             self.prepared = prepared
+        try:
+            self.write_recovery()
+            self.recovery_error = None
+        except OSError as error:
+            self.recovery_error = str(error)
 
     @property
     def active_recipe(self):
@@ -92,7 +103,11 @@ class EditorState:
             next(g for g in candidate["gates"] if g["name"] == name)[key] = value
             self.invalidate(candidate, name)
             next(g for g in candidate["gates"] if g["name"] == name)["reviewed"] = True
-        self.apply(candidate)
+        label = "reshape gate"
+        if key == "vertices":
+            old_size = len(self.gate(name)[key])
+            label = "added point" if len(value) > old_size else "removed point" if len(value) < old_size else label
+        self.apply(candidate, label=label)
 
     def change_gate_type(self, name, kind, y_channel=None, y_bounds=None, x_bounds=None):
         """Convert saved geometry, retaining identifiers, dependents and sample exceptions.
@@ -168,11 +183,11 @@ class EditorState:
         if self.sample_scope:
             raise ValueError("Population names are shared. Select All samples to rename a population.")
         new_name = new_name.strip()
-        if self.gate(name) is None:
+        if self.gate(name) is None and self.draft(name) is None:
             raise ValueError("Select an existing population to rename.")
         if new_name == name:
             return
-        reserved = {"root"} | {g["name"] for g in self.recipe["gates"] + self.recipe.get("pending_gates", [])}
+        reserved = {"root"} | {g["name"] for g in self.recipe["gates"] + self.recipe.get("pending_gates", []) + self.recipe.get("draft_gates", [])}
         if not new_name or new_name in reserved or any(ord(c) < 32 for c in new_name):
             raise ValueError("Choose a nonempty, unique population name (not root or a pending population).")
         candidate = copy.deepcopy(self.recipe)
@@ -184,6 +199,11 @@ class EditorState:
                 gate["parent"] = new_name
             if "references" in gate:
                 gate["references"] = [new_name if ref == name else ref for ref in gate["references"]]
+        for draft in candidate.get("draft_gates", []):
+            if draft["name"] == name:
+                draft["name"] = new_name
+            if draft["parent"] == name:
+                draft["parent"] = new_name
         for changes in candidate.get("sample_overrides", {}).values():
             if name in changes:
                 changes[new_name] = changes.pop(name)
@@ -201,18 +221,29 @@ class EditorState:
             raise ValueError("Population structure is shared. Select All samples to delete a population.")
         if not any(g["name"] == name for g in self.recipe["gates"]):
             raise ValueError("Select an existing population to delete.")
-        affected = {name}
+        selected = self.gate(name)
+        affected = {g["name"] for g in self.recipe["gates"]
+                    if selected.get("quadrant_group") and g.get("quadrant_group") == selected["quadrant_group"]} or {name}
         for gate in self.recipe["gates"]:
             if gate["parent"] in affected or affected.intersection(gate.get("references", [])):
                 affected.add(gate["name"])
         if len(affected) == len(self.recipe["gates"]):
             raise ValueError("Keep at least one population in the editor; delete a subpopulation instead.")
-        return [g["name"] for g in self.recipe["gates"] if g["name"] in affected]
+        return ([g["name"] for g in self.recipe["gates"] if g["name"] in affected]
+                + [g["name"] for g in self.recipe.get("draft_gates", []) if g["parent"] in affected])
 
     def delete_population(self, name):
+        if self.draft(name):
+            if self.sample_scope:
+                raise ValueError("Select All samples to delete a population.")
+            candidate = copy.deepcopy(self.recipe)
+            candidate["draft_gates"] = [g for g in candidate["draft_gates"] if g["name"] != name]
+            self.apply(candidate, label="delete unfinished population")
+            return
         affected = set(self.deletion_set(name))
         candidate = copy.deepcopy(self.recipe)
         candidate["gates"] = [g for g in candidate["gates"] if g["name"] not in affected]
+        candidate["draft_gates"] = [g for g in candidate.get("draft_gates", []) if g["parent"] not in affected]
         for changes in candidate.get("sample_overrides", {}).values():
             for removed in affected:
                 changes.pop(removed, None)
@@ -230,24 +261,29 @@ class EditorState:
     def travel(self, redo=False):
         source, target = (self.future, self.history) if redo else (self.history, self.future)
         if source:
+            labels, target_labels = (self.future_labels, self.history_labels) if redo else (self.history_labels, self.future_labels)
             candidate = source[-1]
             prepared = prepare(self.prepared.sample, candidate)
+            target_labels.append(labels.pop())
             target.append(copy.deepcopy(self.recipe))
             self.recipe = source.pop()
             self.saved = False
             self.prepared = prepared
+            self.write_recovery()
 
     def masks(self):
         recipe = self.active_recipe
         cached = self._mask_cache
         if cached is None or cached[0] is not self.prepared or cached[1] != recipe:
-            self._mask_cache = (self.prepared, copy.deepcopy(recipe), evaluate(self.prepared, recipe))
+            self._mask_cache = (self.prepared, copy.deepcopy(recipe), evaluate(self.prepared, recipe, allow_unfinished=True))
         return self._mask_cache[2]
 
     def counts(self):
         return {name: int(mask.sum()) for name, mask in self.masks().items()}
 
     def save(self):
+        if self.recovery_pending:
+            raise ValueError("Recover or discard the previous unsaved recovery copy before saving.")
         current = digest(self.path) if self.path.exists() else None
         if current != self.original_hash:
             raise ValueError("Recipe changed on disk. Reopen it to avoid overwriting another edit.")
@@ -255,6 +291,7 @@ class EditorState:
         self.saved = True
         self.initial = copy.deepcopy(self.recipe)
         self.original_hash = digest(self.path)
+        self.recovery_path.unlink(missing_ok=True)
         save_snapshot(
             self.path.with_suffix(".reproducibility.yaml"),
             self.recipe,

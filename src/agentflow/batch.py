@@ -39,6 +39,8 @@ def run_batch(samples, recipe_path, output, *, workers=1, progress=None, cancell
     recipe_bytes = Path(recipe_path).read_bytes()
     recipe = load_recipe(recipe_path)
     validate(recipe)
+    from .recipes import require_complete
+    require_complete(recipe)
     manifest_bytes = Path(samples).read_bytes()
     manifest = pd.read_csv(io.BytesIO(manifest_bytes), dtype=str, keep_default_na=False)
     if not {"sample_id", "fcs_path"} <= set(manifest):

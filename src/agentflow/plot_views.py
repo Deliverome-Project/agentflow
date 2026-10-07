@@ -265,6 +265,11 @@ def draw_boundary(ax, gate, color="#e2655e", linewidth=1.7, pickable=False, reci
         return artists
     if gate["kind"] == "boolean":
         return []
+    if gate["kind"] == "quadrant":
+        x = next(v for v in gate["bounds"][:2] if v is not None)
+        y = next(v for v in gate["bounds"][2:] if v is not None)
+        return [ax.axvline(x, color=color, linewidth=linewidth),
+                ax.axhline(y, color=color, linewidth=linewidth)]
     if gate["kind"] == "range":
         return [
             ax.axvline(v, color=color, linewidth=linewidth, picker=6 if pickable else False)

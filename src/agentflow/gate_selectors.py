@@ -6,7 +6,7 @@ from matplotlib.widgets import PolygonSelector
 
 POLYGON_HELP = (
     "Drag inside to move; drag vertices to reshape. Ctrl+click adds a vertex; "
-    "right-click a vertex removes it. Esc starts a new polygon: click points, then the first to finish."
+    "right-click a vertex removes it. Click points, then double-click or click the first to finish."
 )
 
 
@@ -20,6 +20,17 @@ class GatePolygonSelector(PolygonSelector):
     insert_mode = False
 
     def _press(self, event):
+        if event.dblclick and not self._selection_completed and event.button == 1:
+            points = list(self.verts)
+            point = self._get_data_coords(event)
+            if not points or not np.allclose(points[-1], point):
+                points.append(point)
+            if len(points) >= 3:
+                self.verts = points
+                self._double_finished = True
+                self.onselect(self.verts)
+                return
+
         self._interior_move = False
         self._insert_vertex = False
         if self._selection_completed and event.button == 1:
@@ -59,6 +70,9 @@ class GatePolygonSelector(PolygonSelector):
             super()._onmove(event)
 
     def _release(self, event):
+        if getattr(self, "_double_finished", False):
+            self._double_finished = False
+            return
         if getattr(self, "_insert_vertex", False):
             self._insert_vertex = False
             self.onselect(self.verts)

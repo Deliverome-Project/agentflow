@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from ._vendor import flowkit
+from agentflow import flowkit
 
 
 def digest(path):
@@ -18,8 +18,8 @@ def digest(path):
 
 def validate(recipe):
     """Reject ambiguous recipes before opening data or saving edits."""
-    if recipe.get("version") != 1:
-        raise ValueError("Recipe version must be 1")
+    if recipe.get("version") not in (1, 2):
+        raise ValueError("Recipe version must be 1 or 2")
     if not isinstance(recipe.get("transforms"), dict) or not isinstance(recipe.get("gates"), list):
         raise TypeError("Recipe needs transforms and gates")
     comp = recipe["compensation"]
@@ -77,6 +77,12 @@ def validate(recipe):
                 raise ValueError("Range bounds must be finite or null")
             if all(v is not None for v in bounds) and bounds[0] >= bounds[1]:
                 raise ValueError("Range minimum must be below maximum")
+        elif gate["kind"] == "quadrant":
+            bounds = gate["bounds"]
+            if (len(bounds) != 4 or not gate.get("quadrant_group")
+                    or any(sum(v is None for v in bounds[i:i+2]) != 1 for i in (0, 2))
+                    or any(v is not None and not np.isfinite(v) for v in bounds)):
+                raise ValueError("Quadrants require one finite boundary per detector and a group")
         elif gate["kind"] == "rectangle":
             bounds = np.asarray(gate["bounds"], dtype=float)
             if bounds.shape != (4,) or not np.isfinite(bounds).all():
@@ -86,6 +92,8 @@ def validate(recipe):
         else:
             raise ValueError("Gate kind must be polygon, rectangle, or range")
         seen.add(gate["name"])
+    from .workspace_validation import validate_workspace
+    validate_workspace(recipe, seen)
     if "sample_overrides" in recipe:
         from .overrides import validate_overrides
 
@@ -122,3 +130,10 @@ def load_recipe(path):
         recipe = recipe["recipe"]
     validate(recipe)
     return recipe
+
+
+def require_complete(recipe):
+    """Execution/export must not silently omit unfinished populations."""
+    if recipe.get("draft_gates"):
+        names = ", ".join(g["name"] for g in recipe["draft_gates"])
+        raise ValueError(f"Draw or delete unfinished populations before analysis: {names}")

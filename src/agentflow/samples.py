@@ -132,7 +132,7 @@ class SampleSession:
         self.prepared.move_to_end(key)
         prepared = self.prepared[key]
         if gate_key not in self.gated:
-            self.gated[gate_key] = evaluate(prepared, recipe)
+            self.gated[gate_key] = evaluate(prepared, recipe, allow_unfinished=True)
             while len(self.gated) > self.limit * 2:
                 self.gated.popitem(last=False)
         self.gated.move_to_end(gate_key)

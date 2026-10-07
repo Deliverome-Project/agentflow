@@ -36,15 +36,18 @@ agentflow screen runs/01 --gate gfp --metric percent_parent --out screens/01
   names and counts. Click a plot to edit that population. Gates sharing the same
   parent and detector pair also appear together on the main plot; click a boundary
   to select it. **New subpopulation…** defaults to **Choose in plot**: name the
-  population and choose its parent/detectors first. It starts with an unreviewed
-  provisional rectangle at the parent's 10th–90th percentiles. Use **Gate type**
+  population and choose its parent/detectors first. It has **no count or boundary**
+  until drawn. You can save unfinished populations, but must draw or delete them
+  before analysis or GatingML export. This upgrades the recipe to version 2,
+  which older builds reject explicitly. Use **Gate type**
   above the plot to choose rectangle, polygon or range afterward, including while
   drawing an unfinished polygon. The name, children and references stay intact.
   An explicit range, polygon or AND/OR combination is also available in the dialog.
   **Polygon…** provides a direct shortcut:
   choose a name, parent and two detectors, then click vertices in the plot and
-  click the first vertex to finish. Until completion, counts refer to the initial
-  draft extent. The completed vertices are saved exactly in the recipe/YAML.
+  double-click or click the first vertex to finish. The completed vertices are
+  saved exactly in the recipe/YAML. Escape cancels the current drawing; it restores
+  an existing gate's completed boundary or leaves a new population uncounted.
   **Add point**, then a plot click, inserts a vertex on the nearest edge (including
   the closing edge); Ctrl+click remains a shortcut. Drag points to reshape, or
   right-click a point to remove it. **Redraw** starts a replacement polygon;
@@ -63,7 +66,8 @@ agentflow screen runs/01 --gate gfp --metric percent_parent --out screens/01
   Boolean and ratio populations keep their dedicated editors.
 - The window opens within the available desktop area. Drag the divider between
   the editable plot and gallery, or select **Focus plot** for more plot width.
-  Short windows use a compact plot; **?** beside Redraw opens drawing instructions.
+  Short windows use a compact plot; **Tools** beside Redraw opens drawing
+  instructions, quadrants, comparisons, sample review and recovery actions.
   Supporting notes remain in the draft/review badge tooltip; remaining controls
   can be reached by scrolling the main panel.
   **Analysis** contains detector inspection, compensation calculation, pinned
@@ -274,3 +278,75 @@ recipe operations even when sample-only geometry editing is selected.
 After calculating compensation, **Review before / after** opens the exported
 control diagnostics inside the app. Select a detector to switch controls; scroll
 for the full-resolution image. Applying the draft matrix is still a separate action.
+
+
+## Navigation, recovery and review tools
+
+- Click a detector axis label to choose a different **display** detector. This
+  changes the view only: existing gate channels, geometry and counts stay fixed.
+  Editing is disabled on alternate detector views; **Tools → Return to gating
+  axes** restores the editable view. Double-click a population in the tree or
+  its completed plot to explore that population. Click a breadcrumb to return to
+  an ancestor. The sample selector searches names, groups, conditions, plates and
+  wells; switching samples retains the current plot limits.
+- The plot badge states both review status and edit scope, including in compact
+  windows. Changes show before/after counts when membership changes. Undo names
+  the action, including added/removed polygon points.
+- Completed transactions and valid typed thresholds write a local
+  `<recipe>.recovery.json` copy without overwriting the saved recipe. On reopening,
+  the status message announces available recovery. **Tools → Recover unsaved
+  changes** restores it; saving is blocked until an existing recovery copy is
+  recovered or explicitly discarded. A changed saved-file fingerprint blocks
+  recovery and saving. Invalid partial threshold text and in-progress polygon
+  vertices are not recoverable; completed boundaries and named unfinished
+  populations are. Autosave failures are shown explicitly.
+- **Save checkpoint** writes a named recipe into `<recipe>.checkpoints/`; duplicate
+  names are rejected. **Restore checkpoint** is undoable. Checkpoints include
+  gates, transforms, compensation definitions and sample exceptions; they do not
+  copy FCS data or make an experimental review claim. Recovery/checkpoint files
+  are ignored by Git. Save the recipe explicitly before running analysis.
+
+## Linked quadrants and control comparison
+
+**Tools → Quadrants…** creates four linked children of the selected population.
+Choose two detectors and enter thresholds in **signal units** (matching the plot labels), based
+on known controls. FlowKit transforms convert these values to stored recipe coordinates.
+No biological cutoff or control role is inferred. Selecting
+any quadrant and reopening the tool edits all four thresholds together; sample
+scope produces four linked exceptions. Deleting one member deletes its group
+and dependent populations with the existing confirmation/Undo workflow.
+
+Quadrants compile into four native FlowKit RectangleGates with unbounded outer
+edges. Each threshold belongs to its positive side (minimum inclusive, maximum
+exclusive). Tests check a disjoint, exhaustive partition of all parent events,
+including exact-threshold events. There is no separate GUI membership calculation.
+Review status is invalidated after threshold changes; linked edits are atomic.
+
+**Compare with control…** shows the selected sample and a user-chosen reference
+side by side with linked pan/zoom and common limits. Pin the reference to retain
+it across sample changes; save to retain the choice. Each sample uses its own
+explicit compensation and gate exceptions. Density colors are independently
+scaled per plot; compare positions and counts, not absolute colors.
+**Highlight population on parent…** colors the selected population over its
+parent's events using native membership masks. Both tools are read-only.
+
+## Sample review queue
+
+**Tools → Browse and review samples…** lists sample/condition/plate/well metadata,
+small parent-event previews, selected-population counts, whole-recipe review
+status and descriptive QC flags. Search matches metadata and flags. Choose
+**Needs review or QC attention** or **Next needing attention**, then double-click
+or open a row to edit that sample. Failed inputs remain visible with their error.
+
+Flags cover low counts (default 100, adjustable for this review session), empty
+parents, upper-range events, backward time, uncompensated data and identity
+matrices. These are prompts for inspection, not automatic exclusions or assay
+acceptance criteria. The queue does not claim to detect all acquisition defects.
+Unfinished populations show no count. Previews sample up to 250 parent events
+and scale independently; open a sample for labeled axes and precise inspection.
+Loading proceeds one sample at a time and can pause between samples. An individual
+FCS preparation/gating operation still runs to completion before pause takes effect.
+
+Verification uses synthetic fixtures. Representative lab controls and comparisons
+against an agreed reference analysis remain necessary before claiming scientific
+parity with FlowJo.

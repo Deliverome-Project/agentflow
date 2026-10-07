@@ -22,9 +22,10 @@ from .desktop import TITLES, GateWindow, button, label
 from .engine import make_transform
 from .plot_views import apply_axes, display_spec, draw_boundary, draw_events, plot_channels, scatter_limits
 from .samples import SampleSession, sample_recipe
+from .workspace_tools import WorkspaceTools
 
 
-class ScreenWindow(GateWindow):
+class ScreenWindow(WorkspaceTools, GateWindow):
     def __init__(self, records, recipe, name, path):
         self.session = SampleSession(records)
         self.records = records
@@ -50,6 +51,7 @@ class ScreenWindow(GateWindow):
         analysis_menu.addSeparator()
         analysis_menu.addAction("Rename selected population…", self.rename_population)
         analysis_menu.addAction("Delete selected population…", self.delete_population)
+        self.analysis_menu = analysis_menu
         self.gates.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.gates.customContextMenuRequested.connect(self.population_menu)
         analysis_menu.addAction("Detectors…", self.detectors_dialog)
@@ -303,6 +305,7 @@ class ScreenWindow(GateWindow):
         self.gallery_mode.setCurrentText(display.get("gallery_mode", "Sample MFI"))
         self.focus_plot.setChecked(display.get("focus_plot", False))
         self.show_gate(self.active_name)
+        self.init_workspace_tools()
 
     def open_analysis(self):
         from .engine import load_recipe
@@ -316,6 +319,12 @@ class ScreenWindow(GateWindow):
             window.show()
 
     def run_analysis(self):
+        from .recipes import require_complete
+        try:
+            require_complete(self.state.recipe)
+        except ValueError as error:
+            self.message.setText(str(error))
+            return
         parent = W.QFileDialog.getExistingDirectory(
             self, "Choose results location · a new run folder will be created"
         )
@@ -393,8 +402,8 @@ class ScreenWindow(GateWindow):
             self.help.setVisible(not compact)
             self.canvas.setMinimumHeight(90 if compact else 180)
             self.main_layout.setSpacing(4 if compact else 6)
-            self.note.setVisible(not compact)
-            self.scope.setVisible(not compact)
+            self.note.setVisible(self.height() >= 900)
+            self.scope.setVisible(self.height() >= 900)
             self.request_gallery()
 
     def eventFilter(self, watched, event):
@@ -430,7 +439,7 @@ class ScreenWindow(GateWindow):
             self.sample_choice.setCurrentIndex(self.records.index(records[target]))
 
     def select_parent(self):
-        gate = self.state.gate(self.active_name)
+        gate = self.state.gate(self.active_name) or self.state.draft(self.active_name)
         if gate and gate["parent"] in self.names:
             self.gates.setCurrentRow(self.names.index(gate["parent"]))
 
@@ -519,9 +528,11 @@ class ScreenWindow(GateWindow):
             index = records.index(self.record) if self.record in records else -1
             self.previous_sample.setEnabled(bool(records) and index != 0)
             self.next_sample.setEnabled(bool(records) and index != len(records) - 1)
-            gate = self.state.gate(name)
+            gate = self.state.gate(name) or self.state.draft(name)
             self.parent_button.setEnabled(bool(gate and gate["parent"] != "root"))
         super().show_gate(name)
+        if hasattr(self, "breadcrumbs"):
+            self.update_breadcrumbs()
         gate = self.state.gate(name)
         if self.ready and gate and gate["kind"] == "range":
             transform = make_transform(self.state.recipe["transforms"][gate["channels"][0]])
@@ -575,8 +586,12 @@ class ScreenWindow(GateWindow):
             self.flush_bounds()
             record = self.records[index]
             self.session.get(record, self.state.recipe)
+            limits = self.ax.get_xlim(), self.ax.get_ylim()
             self.record = record
             self.show_gate(self.active_name)
+            self.ax.set_xlim(limits[0])
+            self.ax.set_ylim(limits[1])
+            self.canvas.draw_idle()
         except (ValueError, OSError, KeyError, TypeError) as error:
             self.sample_choice.blockSignals(True)
             self.sample_choice.setCurrentIndex(previous)
@@ -584,6 +599,8 @@ class ScreenWindow(GateWindow):
             self.message.setText(f"Sample not loaded: {error}")
 
     def display_channels(self, gate):
+        if gate["name"] in getattr(self, "view_channels", {}):
+            return self.view_channels[gate["name"]]
         return plot_channels(
             gate,
             self.state.recipe,
@@ -644,6 +661,18 @@ class ScreenWindow(GateWindow):
         if not self.ready:
             return
         channels = self.display_channels(gate)
+        if gate["name"] in getattr(self, "view_channels", {}):
+            if self.selector:
+                self.selector.set_active(False)
+                self.selector.set_visible(False)
+            apply_axes(self.ax, channels, self.state.recipe, ["recipe", "recipe"], sample=self.state.prepared.sample)
+            self.help.setText("Exploring different detectors; gate and counts are unchanged. Use gating axes to edit.")
+            self.edit_button.setEnabled(False)
+            self.add_point_button.setEnabled(False)
+            self.redraw_gate_button.setEnabled(False)
+            self.bounds_widget.setEnabled(False)
+            self.request_gallery()
+            return
         modes = [
             ["recipe", "linear", "asinh", "logicle"][c.currentIndex()] for c in [self.x_scale, self.y_scale]
         ]
@@ -720,11 +749,15 @@ class ScreenWindow(GateWindow):
         self.scope.setText(
             f"Editing {scope}{badge}. Counts: {self.record['sample_id']}. Pinned references: {len(self.pinned)}."
         )
+        if hasattr(self, "scope_badge"):
+            self.update_scope_badge()
         self.request_gallery()
 
     def after_refresh(self):
         if self.ready:
             self.request_gallery()
+        if hasattr(self, "scope_badge"):
+            self.update_scope_badge()
 
     def request_gallery(self, *_):
         if self.ready and not self.focus_plot.isChecked():
@@ -736,6 +769,9 @@ class ScreenWindow(GateWindow):
                 self._gallery_timer.start(0)
 
     def _prepare_gallery(self):
+        if self.state.draft(self.active_name):
+            self.update_gallery()
+            return
         if not self.gallery_pending:
             return
         if not self.isVisible() or self.focus_plot.isChecked():
@@ -821,6 +857,20 @@ class ScreenWindow(GateWindow):
             self.gallery_canvas.draw_idle()
 
     def _update_gallery(self):
+        if self.state.draft(self.active_name):
+            self.gallery_pending = False
+            self.summary_controls.hide()
+            self.summary_settings.hide()
+            self.plate_metric.hide()
+            self._gallery_work = None
+            self.gallery_figure.clear()
+            self.gallery_axes.clear()
+            ax = self.gallery_figure.add_subplot(111)
+            ax.set_axis_off()
+            ax.text(.5, .5, "Draw a gate to compare\nthis population", ha="center", va="center", transform=ax.transAxes)
+            self.gallery_range.setText("Not drawn · no population count")
+            self.gallery_canvas.draw_idle()
+            return
         self.gallery_pending = False
         if not self.ready:
             return
@@ -938,6 +988,12 @@ class ScreenWindow(GateWindow):
         )
 
     def export_sample_summary(self):
+        from .recipes import require_complete
+        try:
+            require_complete(self.state.recipe)
+        except ValueError as error:
+            self.message.setText(str(error))
+            return
         path, _ = W.QFileDialog.getSaveFileName(
             self, "Export sample summary", "sample-summary.csv", "CSV (*.csv)"
         )
@@ -1095,6 +1151,7 @@ class ScreenWindow(GateWindow):
             self.gates.setCurrentRow(self.names.index(self.picked[event.artist]))
 
     def gating_axes(self):
+        getattr(self, "view_channels", {}).pop(self.active_name, None)
         for combo in [self.x_scale, self.y_scale]:
             combo.blockSignals(True)
             combo.setCurrentIndex(0)
@@ -1139,7 +1196,10 @@ class ScreenWindow(GateWindow):
 
     def edit_mode(self):
         super().edit_mode()
-        if self.ready and self.selector and self.polygon_preview(self.state.gate(self.active_name)):
+        if self.ready and self.selector and (
+            self.polygon_preview(self.state.gate(self.active_name))
+            or self.active_name in getattr(self, "view_channels", {})
+        ):
             self.selector.set_active(False)
 
     def save(self):
@@ -1150,6 +1210,7 @@ class ScreenWindow(GateWindow):
             self.flush_bounds()
             candidate = copy.deepcopy(self.state.recipe)
             candidate["display"] = {
+                "view_channels": getattr(self, "view_channels", {}),
                 "pinned_samples": sorted(self.pinned),
                 "focus_plot": self.focus_plot.isChecked(),
                 "gallery_mode": self.gallery_mode.currentText(),
@@ -1334,8 +1395,9 @@ class ScreenWindow(GateWindow):
     def delete_population(self):
         try:
             self.flush_bounds()
-            affected = self.state.deletion_set(self.active_name)
-            parent = self.state.gate(self.active_name)["parent"]
+            draft = self.state.draft(self.active_name)
+            affected = [self.active_name] if draft else self.state.deletion_set(self.active_name)
+            parent = (draft or self.state.gate(self.active_name))["parent"]
             message = W.QMessageBox(self)
             message.setWindowTitle("Delete population")
             message.setText(f"Remove {len(affected)} population(s) from all samples?")
@@ -1364,6 +1426,7 @@ class ScreenWindow(GateWindow):
     def new_population(self, preferred_kind=None, preferred_channels=None, parent_name=None):
         active = self.state.gate(self.active_name)
         if active is None:
+            self.message.setText("Draw this population before adding children.")
             return
         dialog = W.QDialog(self)
         dialog.setWindowTitle("Add population")
@@ -1435,53 +1498,34 @@ class ScreenWindow(GateWindow):
         kind.currentTextChanged.connect(lambda text: form.setRowVisible(y, text != "range"))
         kind.setCurrentText(preferred_kind if isinstance(preferred_kind, str) else "Choose in plot")
         message = label(
-            "Choose channels and a parent. Choose in plot starts with a provisional rectangle; "
-            "use Gate type above the plot to switch shape, then draw or reshape it. "
-            "Draft bounds use the parent’s 10th–90th percentiles and need review.", "muted"
+            "Name the population and choose its parent and detectors. Then choose a tool and draw "
+            "in the plot. No count is assigned until drawing is finished. You can save unfinished "
+            "work, but must draw or delete it before running analysis.", "muted"
         )
         message.setWordWrap(True)
         form.addRow(message)
 
         def create():
             try:
-                channels = (
-                    [x.currentData()] if kind.currentText() == "range" else [x.currentData(), y.currentData()]
-                )
-                prepared, masks = self.session.get(self.record, self.state.recipe)
-                values = prepared.transformed.loc[masks[parent.currentText()], channels].to_numpy()
-                if not len(values):
-                    raise ValueError("Parent contains no events")
-                lo, hi = np.quantile(values, [0.1, 0.9], axis=0)
-                hi = np.maximum(hi, lo + 0.001)
-                gate = {
-                    "name": name.text().strip(),
-                    "parent": parent.currentText(),
-                    "kind": "rectangle" if kind.currentText() == "Choose in plot" else kind.currentText(),
-                    "channels": channels,
-                    "reviewed": False,
-                }
-                if gate["kind"] == "boolean":
-                    gate["operation"] = operation.currentText()
-                    gate["references"] = [left.currentText(), right.currentText()]
-                elif gate["kind"] == "polygon":
-                    gate["vertices"] = [lo.tolist(), [hi[0], lo[1]], hi.tolist(), [lo[0], hi[1]]]
-                elif gate["kind"] == "rectangle":
-                    gate["bounds"] = [lo[0], hi[0], lo[1], hi[1]]
-                else:
-                    gate["bounds"] = [lo[0], hi[0]]
-                candidate = copy.deepcopy(self.state.recipe)
-                candidate["gates"].append(gate)
-                self.state.apply(candidate)
-                self.rebuild(gate["name"])
-                dialog.accept()
-                if gate["kind"] == "polygon":
-                    self.gating_axes()
-                    self.selector.clear()
-                    self.help.setText(
-                        "Click each vertex, then click the first vertex to finish. "
-                        "The draft population is replaced when you finish drawing."
+                if kind.currentText() != "boolean":
+                    self.state.add_draft(
+                        name.text(), parent.currentText(),
+                        [x.currentData()] if kind.currentText() == "range" and x.currentData() == y.currentData()
+                        else [x.currentData(), y.currentData()],
+                        "rectangle" if kind.currentText() == "Choose in plot" else kind.currentText(),
                     )
-                    self.help.setToolTip(self.help.text())
+                    self.rebuild(name.text().strip())
+                    dialog.accept()
+                    return
+                candidate = copy.deepcopy(self.state.recipe)
+                candidate["gates"].append({
+                    "name": name.text().strip(), "parent": parent.currentText(), "kind": "boolean",
+                    "channels": [x.currentData(), y.currentData()], "reviewed": False,
+                    "operation": operation.currentText(), "references": [left.currentText(), right.currentText()],
+                })
+                self.state.apply(candidate, label="create combined population")
+                self.rebuild(name.text().strip())
+                dialog.accept()
             except (ValueError, KeyError, TypeError) as error:
                 message.setText(str(error))
 

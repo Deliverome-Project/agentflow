@@ -14,11 +14,13 @@ from PySide6 import QtWidgets as W
 
 from .channel_names import add_detector_choices, channel_label
 from .compensation import load_matrix
+from .draft_editor import DraftEditor
 from .editor_state import EditorState
 from .gate_selectors import POLYGON_HELP as SELECTOR_POLYGON_HELP
 from .gate_selectors import GatePolygonSelector
 from .plots import draw_population
 from .population_tree import PopulationTree
+from .recovery_editor import RecoveryEditor
 from .theme import ASSETS, BERRY, CORAL, desktop_style, setup_plots
 from .threshold import ThresholdSelector
 from .workflow import ROLES
@@ -86,7 +88,7 @@ class ActivePageStack(W.QWidget):
         self.updateGeometry()
 
 
-class GateWindow(W.QMainWindow):
+class GateWindow(DraftEditor, RecoveryEditor, W.QMainWindow):
     def __init__(self, prepared, recipe, name, path):
         super().__init__()
         setup_plots()
@@ -310,16 +312,21 @@ class GateWindow(W.QMainWindow):
             action.setShortcut(QtGui.QKeySequence(key))
             action.triggered.connect(callback)
             self.addAction(action)
+        escape = QtGui.QAction(self)
+        escape.setShortcut(QtGui.QKeySequence("Escape"))
+        escape.triggered.connect(self.cancel_drawing)
+        self.addAction(escape)
         self.rebuild(name)
+        self.init_recovery_tools()
 
     def rebuild(self, name=None):
         actual = [g["name"] for g in self.state.recipe["gates"]]
-        pending = [g["name"] for g in self.state.recipe.get("pending_gates", [])]
+        pending = [g["name"] for g in self.state.recipe.get("pending_gates", []) + self.state.recipe.get("draft_gates", [])]
         order = ["cells", "singlets", *ROLES]
         self.names = [n for n in order if n in actual + pending]
         self.names += [n for n in actual + pending if n not in self.names]
         self.gates.blockSignals(True)
-        self.gates.populate(self.names, self.state.recipe["gates"], TITLES)
+        self.gates.populate(self.names, self.state.recipe["gates"] + self.state.recipe.get("draft_gates", []), TITLES)
         row = self.names.index(name) if name in self.names else 0
         self.gates.setCurrentRow(row)
         self.gates.blockSignals(False)
@@ -374,8 +381,12 @@ class GateWindow(W.QMainWindow):
         self.toolbar.mode and self.edit_mode()
         self.ax.clear()
         gate = self.state.gate(name)
+        if self.state.draft(name):
+            self.show_draft(name)
+            return
         editable = bool(gate and gate["kind"] in {"rectangle", "polygon", "range"})
         self.gate_type.setEnabled(editable)
+        self.gate_type.setPlaceholderText(gate["kind"] if gate else "Not assigned")
         self.gate_type.setCurrentIndex(
             self.gate_type.findText(gate["kind"]) if editable else -1
         )
@@ -467,6 +478,10 @@ class GateWindow(W.QMainWindow):
             help_text = (
                 "Drag a corner or edge to resize. Drag inside to move; drag outside to draw a new gate."
             )
+        elif kind == "quadrant":
+            from .plot_views import draw_boundary
+            draw_boundary(self.ax, gate, recipe=self.state.recipe)
+            help_text = "Linked quadrants. Use Quadrants… to adjust both thresholds for all four populations."
         elif kind == "ratio":
             from .plot_views import draw_boundary
 
@@ -530,7 +545,7 @@ class GateWindow(W.QMainWindow):
         counts = self.state.counts()
         for i, name in enumerate(self.names):
             gate = self.state.gate(name)
-            suffix = "Not assigned" if gate is None else ("Reviewed" if gate.get("reviewed") else "Draft")
+            suffix = "Not drawn" if self.state.draft(name) else "Not assigned" if gate is None else ("Reviewed" if gate.get("reviewed") else "Draft")
             count = "" if gate is None else f"  ·  {counts[name]:,}"
             exception = name in self.state.recipe.get("sample_overrides", {}).get(self.state.sample_id, {})
             ownership = "Exception" if exception else "Shared"
@@ -565,6 +580,9 @@ class GateWindow(W.QMainWindow):
         if matrix is not None and np.allclose(matrix.matrix, np.eye(len(matrix.detectors))):
             text += "\nIdentity matrix · no correction"
         self.compensation_label.setText(text)
+        self.undo_button.setToolTip("Undo " + (self.state.history_labels[-1] if self.state.history_labels else ""))
+        self.undo_button.setText("Undo " + self.state.history_labels[-1] if self.state.history_labels else "Undo")
+        self.redo_button.setToolTip("Redo " + (self.state.future_labels[-1] if self.state.future_labels else ""))
         self.undo_button.setEnabled(bool(self.state.history))
         self.redo_button.setEnabled(bool(self.state.future))
         self.save_button.setText("Save changes && close" if self.state.dirty else "Save && close")
@@ -575,21 +593,43 @@ class GateWindow(W.QMainWindow):
 
     def perform(self, action, redraw=True):
         try:
+            before = self.state.counts().get(self.active_name)
             action()
+            after = self.state.counts().get(self.active_name)
             if redraw:
                 self.show_gate(self.active_name)
             else:
                 self.refresh()
-            self.message.setText(
-                "Unsaved changes · Undo is available." if self.state.dirty else "No unsaved changes."
-            )
+            text = "Unsaved changes · Undo is available." if self.state.dirty else "No unsaved changes."
+            if before is not None and after is not None and before != after:
+                text = f"{before:,} → {after:,} events ({after - before:+,}) · Undo is available."
+            if self.state.recovery_error:
+                text += " Recovery could not be saved: " + self.state.recovery_error
+            self.message.setText(text)
         except (ValueError, OSError, KeyError, TypeError) as error:
             self.message.setText(str(error))
 
     def change_gate_type(self, _index=None):
+        if self.state.draft(self.active_name):
+            kind = self.gate_type.currentText()
+            channels = list(self.state.draft(self.active_name)["channels"])
+            if len(channels) == 1 and kind != "range":
+                available = [c for c in self.state.recipe["transforms"] if c not in channels]
+                if not available:
+                    self.show_gate(self.active_name)
+                    self.message.setText("A two-dimensional tool needs a second detector with an explicit transform.")
+                    return
+                choice, accepted = W.QInputDialog.getItem(self, "Choose Y detector", "Second detector", available, 0, False)
+                if not accepted:
+                    self.show_gate(self.active_name)
+                    return
+                channels.append(choice)
+            self.perform(lambda: self.state.draft_type(self.active_name, kind, channels))
+            return
         kind = self.gate_type.currentText()
         try:
             self.flush_bounds()
+            before = self.state.counts().get(self.active_name)
             gate = self.state.gate(self.active_name)
             kwargs = {}
             if gate["kind"] == "range" and kind != "range":
@@ -619,7 +659,8 @@ class GateWindow(W.QMainWindow):
             if hasattr(self, "gating_axes"):
                 self.gating_axes()
             self.message.setText(
-                "Gate type changed · Review the new boundary and child populations. Undo restores the previous type."
+                f"Gate type changed · {before:,} → {self.state.counts()[self.active_name]:,} events. "
+                "Review the boundary and children. Undo restores the previous type."
             )
         except (ValueError, TypeError, KeyError) as error:
             self.message.setText(str(error))
@@ -652,6 +693,9 @@ class GateWindow(W.QMainWindow):
         self.help.setText(instruction + " Counts keep the previous boundary until you finish.")
 
     def polygon(self, points):
+        if self.state.draft(self.active_name):
+            self.finish_drawing({"vertices": [[float(x), float(y)] for x, y in points]})
+            return
         self.selector.insert_mode = False
         self.add_point_button.setChecked(False)
         self.help.setText(POLYGON_HELP)
@@ -663,11 +707,17 @@ class GateWindow(W.QMainWindow):
         )
 
     def rectangle(self, _press, _release):
+        if self.state.draft(self.active_name):
+            self.finish_drawing({"bounds": list(self.selector.extents)})
+            return
         self.perform(
             lambda: self.state.geometry(self.active_name, "bounds", list(self.selector.extents)), False
         )
 
     def span(self, low, high):
+        if self.state.draft(self.active_name):
+            self.finish_drawing({"bounds": [float(low), float(high)]})
+            return
         limits = self.ax.get_xlim(), self.ax.get_ylim()
         mode = self.range_mode.currentIndex()
         bounds = [None if mode == 1 else float(low), None if mode == 0 else float(high)]
@@ -707,7 +757,7 @@ class GateWindow(W.QMainWindow):
     def rename_population(self):
         try:
             self.flush_bounds()
-            gate = self.state.gate(self.active_name)
+            gate = self.state.gate(self.active_name) or self.state.draft(self.active_name)
             if gate is None:
                 raise ValueError("Select an assigned population to rename.")
             name, accepted = W.QInputDialog.getText(
@@ -861,6 +911,8 @@ class GateWindow(W.QMainWindow):
             if answer != W.QMessageBox.StandardButton.Discard:
                 event.ignore()
                 return
+            if not self.state.recovery_pending:
+                self.state.recovery_path.unlink(missing_ok=True)
         event.accept()
 
 
