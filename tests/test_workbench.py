@@ -408,7 +408,7 @@ def test_laptop_layout_keeps_save_and_polygon_accessible(window, size):
     assert window.width() <= size[0]
     assert window.height() <= size[1]
     root = window.centralWidget()
-    for widget in (window.save_button, window.polygon_button):
+    for widget in (window.save_button, window.polygon_button, window.gate_type, window.add_point_button):
         position = widget.mapTo(root, QtCore.QPoint(0, 0))
         assert root.rect().contains(QtCore.QRect(position, widget.size()))
     assert window.plot_splitter.count() == 2
@@ -466,7 +466,7 @@ def test_child_and_sibling_creation_are_explicit(window):
         dialog = W.QApplication.activeModalWidget()
         relationship = dialog.findChild(W.QComboBox, "population_relationship")
         parent = dialog.findChild(W.QComboBox, "parent_population")
-        assert dialog.findChild(W.QComboBox, "gate_kind").currentText() == "range"
+        assert dialog.findChild(W.QComboBox, "gate_kind").currentText() == "Choose in plot"
         assert parent.currentText() == "live"
         assert not parent.isEnabled()
         relationship.setCurrentIndex(1)
@@ -1030,3 +1030,46 @@ def test_polygon_help_and_rename_in_multisample_view(window, monkeypatch):
     assert window.save_changes()
     saved = json.loads(window.state.path.read_text())
     assert saved["gates"][0]["name"] == "Intact cells"
+
+
+def test_choose_gate_type_after_population_creation(window):
+    def fill():
+        dialog = W.QApplication.activeModalWidget()
+        assert dialog.findChild(W.QComboBox, "gate_kind").currentText() == "Choose in plot"
+        dialog.findChild(W.QLineEdit, "population_name").setText("choose_later")
+        next(b for b in dialog.findChildren(W.QPushButton) if b.text() == "Add draft population").click()
+
+    QtCore.QTimer.singleShot(0, fill)
+    window.new_population()
+    assert window.active_name == "choose_later"
+    assert not window.state.gate("choose_later")["reviewed"]
+    window.gate_type.setCurrentText("polygon")
+    window.gate_type.activated.emit(window.gate_type.currentIndex())
+    assert window.state.gate("choose_later")["kind"] == "polygon"
+    assert window.state.gate("choose_later")["parent"] == "live"
+    window.redraw_gate_button.click()
+    assert not window.selector._selection_completed
+    # Switching while a polygon is unfinished retains the named population.
+    window.gate_type.setCurrentText("rectangle")
+    window.gate_type.activated.emit(window.gate_type.currentIndex())
+    assert window.active_name == "choose_later"
+    assert window.state.gate("choose_later")["kind"] == "rectangle"
+    window.travel(False)
+    assert window.state.gate("choose_later")["kind"] == "polygon"
+    assert window.save_changes()
+    assert json.loads(window.state.path.read_text())["gates"][-1]["kind"] == "polygon"
+
+
+def test_polygon_tools_return_preview_to_gating_axes(window):
+    window.gates.setCurrentRow(window.names.index("cells"))
+    window.gate_type.setCurrentText("polygon")
+    window.change_gate_type()
+    before = window.state.counts()
+    window.x_scale.setCurrentText("Asinh")
+    assert not window.selector.active
+    window.add_point_button.click()
+    assert window.x_scale.currentText() == "Recipe scale"
+    assert window.selector.active and window.selector.insert_mode
+    assert window.state.counts() == before
+    window.edit_scope.setCurrentText("This sample only")
+    assert not window.gate_type.isEnabled()

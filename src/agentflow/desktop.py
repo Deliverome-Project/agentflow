@@ -15,12 +15,17 @@ from PySide6 import QtWidgets as W
 from .channel_names import add_detector_choices, channel_label
 from .compensation import load_matrix
 from .editor_state import EditorState
-from .gate_selectors import POLYGON_HELP, GatePolygonSelector
+from .gate_selectors import POLYGON_HELP as SELECTOR_POLYGON_HELP
+from .gate_selectors import GatePolygonSelector
 from .plots import draw_population
 from .population_tree import PopulationTree
 from .theme import ASSETS, BERRY, CORAL, desktop_style, setup_plots
 from .threshold import ThresholdSelector
 from .workflow import ROLES
+
+POLYGON_HELP = SELECTOR_POLYGON_HELP.replace(
+    "Ctrl+click adds a vertex", "Add point, then click (or Ctrl+click) adds a vertex"
+)
 
 TITLES = {
     "cells": "Cells",
@@ -184,6 +189,32 @@ class GateWindow(W.QMainWindow):
         self.review_badge = label("", "badge")
         tools.addWidget(self.review_badge)
         card_layout.addLayout(tools)
+        drawing_tools = W.QHBoxLayout()
+        drawing_tools.addWidget(label("Gate type"))
+        self.gate_type = W.QComboBox(objectName="active_gate_type")
+        self.gate_type.addItems(["rectangle", "polygon", "range"])
+        self.gate_type.setToolTip(
+            "Change the selected population without deleting its children. "
+            "Rectangle uses the bounding box; range keeps only X. Changes require review."
+        )
+        self.gate_type.activated.connect(self.change_gate_type)
+        drawing_tools.addWidget(self.gate_type)
+        self.add_point_button = button("Add point", self.add_polygon_point)
+        self.add_point_button.setCheckable(True)
+        self.add_point_button.setToolTip("Click the plot to insert a vertex on the nearest polygon edge")
+        drawing_tools.addWidget(self.add_point_button)
+        self.redraw_gate_button = button("Redraw", self.redraw_gate)
+        self.redraw_gate_button.setToolTip("Draw a replacement; the saved boundary stays until you finish")
+        drawing_tools.addWidget(self.redraw_gate_button)
+        self.gate_help_button = button("?", lambda: W.QMessageBox.information(
+            self, "Gate editing help", self.help.text()
+        ))
+        self.gate_help_button.setAccessibleName("Gate editing help")
+        self.gate_help_button.setToolTip("Show drawing instructions")
+        self.gate_help_button.setFixedWidth(28)
+        drawing_tools.addWidget(self.gate_help_button)
+        drawing_tools.addStretch()
+        card_layout.addLayout(drawing_tools)
         self.figure = Figure(figsize=(8, 5), facecolor="white", layout="constrained")
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.ax = self.figure.add_subplot(111)
@@ -343,6 +374,14 @@ class GateWindow(W.QMainWindow):
         self.toolbar.mode and self.edit_mode()
         self.ax.clear()
         gate = self.state.gate(name)
+        editable = bool(gate and gate["kind"] in {"rectangle", "polygon", "range"})
+        self.gate_type.setEnabled(editable)
+        self.gate_type.setCurrentIndex(
+            self.gate_type.findText(gate["kind"]) if editable else -1
+        )
+        self.add_point_button.setChecked(False)
+        self.add_point_button.setEnabled(bool(gate and gate["kind"] == "polygon"))
+        self.redraw_gate_button.setEnabled(editable)
         mapping = self.state.recipe.get("channel_roles", {}).get(name)
         uncertain = mapping is not None and not mapping.get("confirmed", False)
         self.title.setText(
@@ -547,7 +586,75 @@ class GateWindow(W.QMainWindow):
         except (ValueError, OSError, KeyError, TypeError) as error:
             self.message.setText(str(error))
 
+    def change_gate_type(self, _index=None):
+        kind = self.gate_type.currentText()
+        try:
+            self.flush_bounds()
+            gate = self.state.gate(self.active_name)
+            kwargs = {}
+            if gate["kind"] == "range" and kind != "range":
+                channels = [c for c in self.state.recipe["transforms"] if c != gate["channels"][0]]
+                choices = [channel_label(self.state.prepared.sample, c) for c in channels]
+                choice, accepted = W.QInputDialog.getItem(
+                    self, "Choose Y detector", "Second detector", choices, 0, False
+                )
+                if not accepted:
+                    return
+                channel = channels[choices.index(choice)]
+                values = self.state.prepared.transformed.loc[
+                    self.state.masks()[gate["parent"]], [gate["channels"][0], channel]
+                ].to_numpy()
+                if not len(values):
+                    raise ValueError("Parent contains no events; cannot initialize a two-dimensional gate.")
+                lo, hi = np.quantile(values, [0.1, 0.9], axis=0)
+                hi = np.maximum(hi, lo + 0.001)
+                # Include existing finite X endpoints when replacing an open range.
+                low, high = gate["bounds"]
+                kwargs = {
+                    "y_channel": channel, "y_bounds": [float(lo[1]), float(hi[1])],
+                    "x_bounds": [min(float(lo[0]), high - 0.001) if high is not None else float(lo[0]),
+                                 max(float(hi[0]), low + 0.001) if low is not None else float(hi[0])],
+                }
+            self.state.change_gate_type(self.active_name, kind, **kwargs)
+            if hasattr(self, "gating_axes"):
+                self.gating_axes()
+            self.message.setText(
+                "Gate type changed · Review the new boundary and child populations. Undo restores the previous type."
+            )
+        except (ValueError, TypeError, KeyError) as error:
+            self.message.setText(str(error))
+        finally:
+            self.show_gate(self.active_name)
+
+    def add_polygon_point(self):
+        if not isinstance(self.selector, GatePolygonSelector):
+            return
+        self.edit_mode()
+        self.selector.insert_mode = self.add_point_button.isChecked()
+        self.help.setText(
+            "Click where the new point belongs; it is inserted along the nearest edge."
+            if self.selector.insert_mode else POLYGON_HELP
+        )
+
+    def redraw_gate(self):
+        if self.selector is None:
+            return
+        self.edit_mode()
+        self.add_point_button.setChecked(False)
+        if isinstance(self.selector, GatePolygonSelector):
+            self.selector.insert_mode = False
+            self.selector.clear()
+            instruction = "Click points, then the first point to finish."
+        else:
+            if isinstance(self.selector, (RectangleSelector, SpanSelector)):
+                self.selector.clear()
+            instruction = "Drag to draw a replacement gate."
+        self.help.setText(instruction + " Counts keep the previous boundary until you finish.")
+
     def polygon(self, points):
+        self.selector.insert_mode = False
+        self.add_point_button.setChecked(False)
+        self.help.setText(POLYGON_HELP)
         self.perform(
             lambda: self.state.geometry(
                 self.active_name, "vertices", [[float(x), float(y)] for x, y in points]

@@ -17,12 +17,14 @@ class GatePolygonSelector(PolygonSelector):
     drawing, keyboard modifiers and completion callbacks.
     """
 
+    insert_mode = False
+
     def _press(self, event):
         self._interior_move = False
         self._insert_vertex = False
         if self._selection_completed and event.button == 1:
             keys = (event.key or "").split("+")
-            if "control" in keys or "ctrl" in keys or "move_vertex" in self._state:
+            if self.insert_mode or "control" in keys or "ctrl" in keys or "move_vertex" in self._state:
                 # Choose the nearest segment in screen pixels, including closing edge.
                 vertices = np.asarray(self.verts)
                 pixels = self.ax.transData.transform(vertices)

@@ -35,16 +35,37 @@ agentflow screen runs/01 --gate gfp --metric percent_parent --out screens/01
 - The **All populations** gallery shows the hierarchy simultaneously, with detector
   names and counts. Click a plot to edit that population. Gates sharing the same
   parent and detector pair also appear together on the main plot; click a boundary
-  to select it. **New population** adds a range, rectangle, polygon or AND/OR
-  combination of existing gates. **Draw polygon…** provides a direct shortcut:
+  to select it. **New subpopulation…** defaults to **Choose in plot**: name the
+  population and choose its parent/detectors first. It starts with an unreviewed
+  provisional rectangle at the parent's 10th–90th percentiles. Use **Gate type**
+  above the plot to choose rectangle, polygon or range afterward, including while
+  drawing an unfinished polygon. The name, children and references stay intact.
+  An explicit range, polygon or AND/OR combination is also available in the dialog.
+  **Polygon…** provides a direct shortcut:
   choose a name, parent and two detectors, then click vertices in the plot and
   click the first vertex to finish. Until completion, counts refer to the initial
   draft extent. The completed vertices are saved exactly in the recipe/YAML.
+  **Add point**, then a plot click, inserts a vertex on the nearest edge (including
+  the closing edge); Ctrl+click remains a shortcut. Drag points to reshape, or
+  right-click a point to remove it. **Redraw** starts a replacement polygon;
+  counts keep the previous completed boundary until the new polygon closes.
+  **Undo** restores geometry and gate types, including sample exceptions.
   Polygon editing uses gating coordinates; equivalent linear axes remain editable.
+  Add point/Redraw return display previews to the recipe's gating axes.
+- Gate type is shared across samples: switch to **All samples** to change it.
+  Existing per-sample boundaries are converted individually, and affected gates,
+  descendants and Boolean dependents require review. Polygon → rectangle uses
+  its bounding box; → range retains only the X interval. Range → 2D asks for a
+  second detector, initializing Y and open X endpoints from the current parent's
+  10th–90th percentiles. These are draft choices, not biological thresholds.
+  Conversion can change membership, including events on polygon/rectangle edges;
+  inspect counts before review. FlowKit still computes all-event membership.
+  Boolean and ratio populations keep their dedicated editors.
 - The window opens within the available desktop area. Drag the divider between
   the editable plot and gallery, or select **Focus plot** for more plot width.
-  Short windows use a compact plot and put supporting notes in the draft/review
-  badge tooltip; remaining controls can be reached by scrolling the main panel.
+  Short windows use a compact plot; **?** beside Redraw opens drawing instructions.
+  Supporting notes remain in the draft/review badge tooltip; remaining controls
+  can be reached by scrolling the main panel.
   **Analysis** contains detector inspection, compensation calculation, pinned
   controls and resetting sample exceptions, alongside save/run/open actions.
 - **Compare samples** shows the selected population across samples with common
