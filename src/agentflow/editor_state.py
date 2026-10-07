@@ -94,6 +94,63 @@ class EditorState:
             next(g for g in candidate["gates"] if g["name"] == name)["reviewed"] = True
         self.apply(candidate)
 
+    def change_gate_type(self, name, kind, y_channel=None, y_bounds=None, x_bounds=None):
+        """Convert saved geometry, retaining identifiers, dependents and sample exceptions.
+
+        Polygon to rectangle uses its bounding box; projecting onto X removes the
+        Y restriction. Open ranges require explicit finite X/Y limits to become 2D.
+        All conversions require review, including rectangle/polygon boundary cases.
+        """
+        if self.sample_scope:
+            raise ValueError("Gate types are shared. Select All samples to change gate type.")
+        gate = self.gate(name)
+        supported = {"rectangle", "polygon", "range"}
+        if gate is None or gate["kind"] not in supported or kind not in supported:
+            raise ValueError("Only rectangle, polygon and range gates can change type here.")
+        old_kind = gate["kind"]
+        if old_kind == kind:
+            return
+        if old_kind == "range" and (
+            not y_channel or y_channel == gate["channels"][0] or y_bounds is None
+        ):
+            raise ValueError("Choose a second detector and finite Y bounds for a two-dimensional gate.")
+
+        def convert(geometry):
+            if old_kind == "polygon":
+                xs, ys = zip(*geometry["vertices"])
+                bounds = [min(xs), max(xs), min(ys), max(ys)]
+            else:
+                bounds = list(geometry["bounds"])
+            if old_kind == "range":
+                bounds = [
+                    value if value is not None else (x_bounds or [None, None])[i]
+                    for i, value in enumerate(bounds)
+                ] + list(y_bounds)
+            if kind == "polygon":
+                a, b, c, d = bounds
+                return {"vertices": [[a, c], [b, c], [b, d], [a, d]]}
+            return {"bounds": bounds[:2] if kind == "range" else bounds}
+
+        candidate = copy.deepcopy(self.recipe)
+        shared = next(g for g in candidate["gates"] if g["name"] == name)
+        old_key = "vertices" if old_kind == "polygon" else "bounds"
+        converted = convert(shared)
+        shared.pop(old_key)
+        shared.update(converted)
+        shared["kind"] = kind
+        if kind == "range":
+            shared["channels"] = shared["channels"][:1]
+        elif old_kind == "range":
+            shared["channels"].append(y_channel)
+        for changes in candidate.get("sample_overrides", {}).values():
+            change = changes.get(name, {})
+            if old_key in change:
+                converted = convert(change)
+                change.pop(old_key)
+                change.update(converted)
+        self.invalidate(candidate, name)
+        self.apply(candidate)
+
     def review(self, name):
         candidate = copy.deepcopy(self.recipe)
         if self.sample_scope and self.sample_id:

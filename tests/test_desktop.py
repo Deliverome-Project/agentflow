@@ -324,3 +324,97 @@ def test_rename_preserves_membership_dependents_overrides_and_roundtrip(window, 
     window.state.sample_scope = True
     with pytest.raises(ValueError, match="All samples"):
         window.state.rename_population("Reporter positive", "new")
+
+
+def test_gate_conversion_preserves_children_exceptions_and_undo(window):
+    candidate = copy.deepcopy(window.state.recipe)
+    candidate["sample_overrides"] = {
+        "synthetic": {"cells": {"bounds": [1.0, 3.0, 1.0, 3.0], "reviewed": True}}
+    }
+    window.state.apply(candidate)
+    window.state.sample_id = "synthetic"
+    before = copy.deepcopy(window.state.recipe)
+    counts = window.state.counts()
+    window.state.change_gate_type("cells", "polygon")
+    assert window.state.counts() == counts
+    assert window.state.gate("gfp")["parent"] == "cells"
+    assert not window.state.gate("gfp")["reviewed"]
+    exception = window.state.recipe["sample_overrides"]["synthetic"]["cells"]
+    assert "bounds" not in exception and len(exception["vertices"]) == 4
+    assert not exception["reviewed"]
+    window.state.save()
+    saved = load_recipe(window.state.path)
+    assert saved["gates"][0]["kind"] == "polygon"
+    window.state.travel()
+    assert window.state.recipe == before
+    window.state.travel(redo=True)
+    window.state.change_gate_type("cells", "rectangle")
+    assert window.state.counts() == counts
+    assert window.state.recipe["sample_overrides"]["synthetic"]["cells"]["bounds"] == [1, 3, 1, 3]
+    window.state.sample_scope = True
+    before = copy.deepcopy(window.state.recipe)
+    with pytest.raises(ValueError, match="All samples"):
+        window.state.change_gate_type("cells", "polygon")
+    assert window.state.recipe == before
+
+
+def test_add_point_button_inserts_on_closing_edge_and_undo(window):
+    window.state.change_gate_type("cells", "polygon")
+    window.show_gate("cells")
+    window.canvas.draw()
+    before = copy.deepcopy(window.state.gate("cells")["vertices"])
+    window.add_point_button.click()
+    for name in ("button_press_event", "button_release_event"):
+        pointer(window, name, (-0.1, 2.0))
+    points = window.state.gate("cells")["vertices"]
+    assert len(points) == 5
+    np.testing.assert_allclose(points[-1], [-0.1, 2.0], atol=0.02)
+    assert not window.add_point_button.isChecked()
+    assert not window.selector.insert_mode
+    window.state.save()
+    assert len(load_recipe(window.state.path)["gates"][0]["vertices"]) == 5
+    window.travel(False)
+    assert window.state.gate("cells")["vertices"] == before
+
+
+def test_range_conversion_requires_detector_and_is_transactional(window, monkeypatch):
+    before = copy.deepcopy(window.state.recipe)
+    with pytest.raises(ValueError, match="second detector"):
+        window.state.change_gate_type("gfp", "polygon")
+    assert window.state.recipe == before
+    window.show_gate("gfp")
+    monkeypatch.setattr(W.QInputDialog, "getItem", lambda *a, **k: ("B", False))
+    window.gate_type.setCurrentText("polygon")
+    window.change_gate_type()
+    assert window.gate_type.currentText() == "range"
+    assert window.state.recipe == before
+    monkeypatch.setattr(W.QInputDialog, "getItem", lambda *a, **k: ("B", True))
+    window.gate_type.setCurrentText("polygon")
+    window.change_gate_type()
+    gate = window.state.gate("gfp")
+    assert gate["kind"] == "polygon"
+    assert gate["channels"] == ["A", "B"]
+    assert not gate["reviewed"]
+    window.state.change_gate_type("gfp", "range")
+    assert window.state.gate("gfp")["channels"] == ["A"]
+    assert window.state.gate("gfp")["bounds"][0] == 1.0
+
+
+def test_polygon_bounding_box_recalculates_children_and_boolean_reviews(window):
+    candidate = copy.deepcopy(window.state.recipe)
+    candidate["gates"][0].update(kind="polygon", vertices=[[0, 0], [4, 0], [0, 4]])
+    candidate["gates"][0].pop("bounds")
+    candidate["gates"].append({
+        "name": "combined", "kind": "boolean", "parent": "root", "channels": ["A", "B"],
+        "references": ["cells", "gfp"], "operation": "or", "reviewed": True,
+    })
+    window.state.apply(candidate)
+    assert window.state.counts()["cells"] == 2
+    window.state.change_gate_type("cells", "rectangle")
+    assert window.state.counts()["cells"] == 4
+    assert window.state.counts()["gfp"] == 3
+    assert window.state.counts()["combined"] == 4
+    assert not window.state.gate("combined")["reviewed"]
+    window.state.travel()
+    assert window.state.counts()["cells"] == 2
+    assert window.state.gate("combined")["reviewed"]

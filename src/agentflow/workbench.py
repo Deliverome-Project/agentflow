@@ -389,7 +389,8 @@ class ScreenWindow(GateWindow):
         super().resizeEvent(event)
         if getattr(self, "ready", False):
             compact = self.height() < 800
-            self.stack.setMinimumHeight(180 if compact else 280)
+            self.stack.setMinimumHeight(190 if compact else 360)
+            self.help.setVisible(not compact)
             self.canvas.setMinimumHeight(90 if compact else 180)
             self.main_layout.setSpacing(4 if compact else 6)
             self.note.setVisible(not compact)
@@ -706,9 +707,14 @@ class ScreenWindow(GateWindow):
                 self.selector.set_active(False)
             self.edit_button.setEnabled(False)
             self.bounds_widget.setEnabled(False)
+            self.add_point_button.setEnabled(False)
+            self.redraw_gate_button.setEnabled(False)
             self.help.setText(
                 "This sample has different gate geometry. Choose This sample only to edit, or reset its exception."
             )
+        self.gate_type.setEnabled(
+            not self.state.sample_scope and gate["kind"] in {"rectangle", "polygon", "range"}
+        )
         self.review_button.setEnabled(self.state.sample_scope or gate["name"] not in exceptions)
         badge = " · Sample-specific geometry/review" if gate["name"] in exceptions else ""
         self.scope.setText(
@@ -1120,6 +1126,17 @@ class ScreenWindow(GateWindow):
                 return True
         return False
 
+    def add_polygon_point(self):
+        if self.polygon_preview(self.state.gate(self.active_name)):
+            self.gating_axes()
+            self.add_point_button.setChecked(True)
+        super().add_polygon_point()
+
+    def redraw_gate(self):
+        if self.polygon_preview(self.state.gate(self.active_name)):
+            self.gating_axes()
+        super().redraw_gate()
+
     def edit_mode(self):
         super().edit_mode()
         if self.ready and self.selector and self.polygon_preview(self.state.gate(self.active_name)):
@@ -1388,7 +1405,7 @@ class ScreenWindow(GateWindow):
             relationship.setCurrentIndex(2)
             parent.setCurrentText(parent_name)
         form.addRow("Create as", relationship)
-        kind.addItems(["rectangle", "polygon", "range", "boolean"])
+        kind.addItems(["Choose in plot", "rectangle", "polygon", "range", "boolean"])
         for title, field in [
             ("Name", name),
             ("Parent population", parent),
@@ -1416,8 +1433,12 @@ class ScreenWindow(GateWindow):
             lambda text: [form.setRowVisible(field, text == "boolean") for field in [left, right, operation]]
         )
         kind.currentTextChanged.connect(lambda text: form.setRowVisible(y, text != "range"))
-        kind.setCurrentText(preferred_kind or ("range" if len(active["channels"]) == 1 else "rectangle"))
-        message = label("Choose channels and a parent, then reshape the draft gate in the plot.", "muted")
+        kind.setCurrentText(preferred_kind if isinstance(preferred_kind, str) else "Choose in plot")
+        message = label(
+            "Choose channels and a parent. Choose in plot starts with a provisional rectangle; "
+            "use Gate type above the plot to switch shape, then draw or reshape it. "
+            "Draft bounds use the parent’s 10th–90th percentiles and need review.", "muted"
+        )
         message.setWordWrap(True)
         form.addRow(message)
 
@@ -1435,7 +1456,7 @@ class ScreenWindow(GateWindow):
                 gate = {
                     "name": name.text().strip(),
                     "parent": parent.currentText(),
-                    "kind": kind.currentText(),
+                    "kind": "rectangle" if kind.currentText() == "Choose in plot" else kind.currentText(),
                     "channels": channels,
                     "reviewed": False,
                 }
