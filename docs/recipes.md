@@ -1,6 +1,6 @@
-# Recipe reference (version 1)
+# Recipe reference (versions 1 and 2)
 
-Required fields: `version: 1`, `compensation`, `transforms`, `gates`.
+Required fields: `version: 1` or `version: 2`, `compensation`, `transforms`, `gates`.
 Gate names are globally unique; `root` represents all events; parents must appear
 before children. Optional fields include `experiment`, `pending_gates`,
 `channel_roles`, and per-gate `label`, `note`, `reviewed`.
@@ -60,3 +60,28 @@ Changing a referenced gate invalidates review of the combination.
  "operation":"and", "references":["gfp","mscarlet"],
  "channels":["BL1-A","YL2-A"], "reviewed":false}
 ```
+
+
+## Version 2 workspace additions
+
+Creating an unfinished population or linked quadrants upgrades the recipe to
+`version: 2`. Existing version-1 recipes remain supported without migration.
+Older Agentflow builds reject version 2 rather than silently omitting unfinished
+populations. Completing/deleting unfinished populations does not downgrade the
+recipe; use the upgraded build for replay. Undo/checkpoints can restore the prior
+version as part of restoring the prior complete recipe.
+
+`draft_gates` stores named unfinished populations separately from executable
+`gates`. Each entry has `name`, an existing executable `parent`, `kind` (rectangle,
+polygon or range), and `channels` (two distinct transformed detectors; a range
+may use one). It contains no geometry and has no membership/count. Draft names
+cannot collide with completed or unmapped populations. Execution and GatingML
+export reject nonempty `draft_gates`; only explicit editor previews evaluate the
+completed portion. Saving/recovery retain the unfinished definitions.
+
+`kind: quadrant` has two channels, four bounds and a `quadrant_group` string.
+Exactly four members share parent, channels and thresholds. Each detector has
+one finite endpoint and one unbounded endpoint; the four combinations partition
+the parent with threshold events assigned to the positive side. Native FlowKit
+RectangleGates execute these definitions. Changing only one quadrant threshold
+is invalid; linked edits update all four, including per-sample exceptions.

@@ -71,6 +71,8 @@ def prepare(path, recipe):
 def build_strategy(recipe, matrix=None):
     """Compile the recipe into FlowKit's hierarchy, dimensions and transforms."""
     validate(recipe)
+    from .recipes import require_complete
+    require_complete(recipe)
     fk = flowkit()
     strategy = fk.GatingStrategy()
     if matrix is not None:
@@ -84,7 +86,7 @@ def build_strategy(recipe, matrix=None):
         dims = []
         for i, channel in enumerate(gate["channels"]):
             bounds = (
-                gate["bounds"][i * 2 : i * 2 + 2] if gate["kind"] in ("rectangle", "range") else [None, None]
+                gate["bounds"][i * 2 : i * 2 + 2] if gate["kind"] in ("rectangle", "range", "quadrant") else [None, None]
             )
             dims.append(
                 fk.Dimension(
@@ -119,7 +121,10 @@ def build_strategy(recipe, matrix=None):
     return strategy
 
 
-def evaluate(prepared, recipe):
+def evaluate(prepared, recipe, *, allow_unfinished=False):
+    if allow_unfinished:
+        validate(recipe)
+        recipe = {k: v for k, v in recipe.items() if k != "draft_gates"}
     strategy = build_strategy(recipe, prepared.matrix)
     masks = {"root": np.ones(prepared.sample.event_count, dtype=bool)}
     if recipe["gates"]:
@@ -139,6 +144,8 @@ def analyze_sample(path, recipe):
 
 
 def summarize(prepared, recipe, masks):
+    from .recipes import require_complete
+    require_complete(recipe)
     rows = []
     counts = {name: int(mask.sum()) for name, mask in masks.items()}
     for gate in [{"name": "root", "parent": "root"}, *recipe["gates"]]:

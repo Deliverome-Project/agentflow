@@ -759,8 +759,8 @@ def test_dummy_histograms_open_between_and_scatter_exploration_is_read_only(wind
 
     QtCore.QTimer.singleShot(0, fill)
     dialog.create_population()
-    assert window.state.gate("reporter_subset")["parent"] == "live"
-    assert window.state.gate("reporter_subset")["channels"] == ["BL1-A", "RL1-A"]
+    assert window.state.draft("reporter_subset")["parent"] == "live"
+    assert window.state.draft("reporter_subset")["channels"] == ["BL1-A", "RL1-A"]
     dialog.close()
 
 
@@ -1042,22 +1042,24 @@ def test_choose_gate_type_after_population_creation(window):
     QtCore.QTimer.singleShot(0, fill)
     window.new_population()
     assert window.active_name == "choose_later"
-    assert not window.state.gate("choose_later")["reviewed"]
+    assert window.state.gate("choose_later") is None
+    assert window.count.text() == "—"
+    assert "choose_later" not in window.state.counts()
     window.gate_type.setCurrentText("polygon")
     window.gate_type.activated.emit(window.gate_type.currentIndex())
-    assert window.state.gate("choose_later")["kind"] == "polygon"
-    assert window.state.gate("choose_later")["parent"] == "live"
+    assert window.state.draft("choose_later")["kind"] == "polygon"
+    assert window.state.draft("choose_later")["parent"] == "live"
     window.redraw_gate_button.click()
     assert not window.selector._selection_completed
     # Switching while a polygon is unfinished retains the named population.
     window.gate_type.setCurrentText("rectangle")
     window.gate_type.activated.emit(window.gate_type.currentIndex())
     assert window.active_name == "choose_later"
-    assert window.state.gate("choose_later")["kind"] == "rectangle"
+    assert window.state.draft("choose_later")["kind"] == "rectangle"
     window.travel(False)
-    assert window.state.gate("choose_later")["kind"] == "polygon"
+    assert window.state.draft("choose_later")["kind"] == "polygon"
     assert window.save_changes()
-    assert json.loads(window.state.path.read_text())["gates"][-1]["kind"] == "polygon"
+    assert json.loads(window.state.path.read_text())["draft_gates"][-1]["kind"] == "polygon"
 
 
 def test_polygon_tools_return_preview_to_gating_axes(window):
@@ -1073,3 +1075,144 @@ def test_polygon_tools_return_preview_to_gating_axes(window):
     assert window.state.counts() == before
     window.edit_scope.setCurrentText("This sample only")
     assert not window.gate_type.isEnabled()
+
+
+def test_unfinished_double_click_polygon_and_escape_restore(window):
+    from matplotlib.backend_bases import MouseEvent
+
+    window.state.add_draft("drawing", "live", ["BL1-A", "YL2-A"], "polygon")
+    window.rebuild("drawing")
+    window.canvas.draw()
+    xl, yl = window.ax.get_xlim(), window.ax.get_ylim()
+    vertices = [[xl[0] + a * (xl[1] - xl[0]), yl[0] + b * (yl[1] - yl[0])]
+                for a, b in [(0.2, 0.2), (0.8, 0.2), (0.5, 0.8)]]
+    for i, point in enumerate(vertices):
+        x, y = window.ax.transData.transform(point)
+        for event_name in ("motion_notify_event", "button_press_event", "button_release_event"):
+            event = MouseEvent(event_name, window.canvas, x, y, button=1, dblclick=i == 2)
+            window.canvas.callbacks.process(event_name, event)
+    assert window.state.draft("drawing") is None
+    np.testing.assert_allclose(window.state.gate("drawing")["vertices"], vertices)
+    before = window.state.counts()
+    window.redraw_gate()
+    assert not window.selector._selection_completed
+    from PySide6.QtTest import QTest
+    QTest.keyClick(window.canvas, QtCore.Qt.Key_Escape)
+    assert window.selector._selection_completed
+    assert window.state.counts() == before
+    assert not window.state.gate("drawing")["reviewed"]
+
+
+def test_axis_picker_changes_view_only_and_zoom_survives_sample_change(window, monkeypatch):
+    before = window.state.counts()
+    monkeypatch.setattr(W.QInputDialog, "getItem", lambda *a, **k: ("BL1-A", True))
+    window.axis_picked(SimpleNamespace(artist=window.ax.xaxis.label))
+    assert window.display_channels(window.state.gate("live"))[0] == "BL1-A"
+    assert window.state.counts() == before
+    assert not window.selector.active
+    assert not window.edit_button.isEnabled()
+    window.ax.set_xlim(1, 2)
+    window.ax.set_ylim(3, 4)
+    window.sample_choice.setCurrentIndex(1)
+    np.testing.assert_allclose(window.ax.get_xlim(), [1, 2])
+    np.testing.assert_allclose(window.ax.get_ylim(), [3, 4])
+    window.gating_axes()
+    assert window.selector.active
+    assert window.state.gate("live")["channels"] != ["BL1-A"]
+    assert window.breadcrumbs.textFormat() == QtCore.Qt.RichText
+    assert "href=" in window.breadcrumbs.text()
+    window.breadcrumbs.linkActivated.emit(str(window.names.index("cells")))
+    assert window.active_name == "cells"
+
+
+def test_linked_quadrant_dialog_and_comparison_are_native_and_read_only(window):
+    from agentflow.workspace_dialogs import ComparisonDialog, QuadrantDialog
+
+    dialog = QuadrantDialog(window)
+    dialog.name.setText("reporters")
+    dialog.x.setCurrentText("BL1-A")
+    dialog.y.setCurrentText("YL2-A")
+    dialog.x_cut.setValue(.5)
+    dialog.y_cut.setValue(.5)
+    next(b for b in dialog.findChildren(W.QPushButton) if b.text() == "Create four populations").click()
+    assert window.active_name == "reporters ++"
+    masks = window.state.masks()
+    names = [g["name"] for g in window.state.recipe["gates"] if g.get("quadrant_group") == "reporters"]
+    np.testing.assert_array_equal(sum(masks[n].astype(int) for n in names), masks["live"].astype(int))
+    from agentflow.engine import make_transform
+    expected = make_transform(window.state.recipe["transforms"]["BL1-A"]).apply(np.array([.5]))[0]
+    assert window.state.gate("reporters ++")["bounds"][0] == pytest.approx(expected)
+    edit = QuadrantDialog(window)
+    before_bounds = copy.deepcopy(window.state.gate("reporters ++")["bounds"])
+    next(b for b in edit.findChildren(W.QPushButton) if b.text() == "Apply linked thresholds").click()
+    assert window.state.gate("reporters ++")["bounds"] == before_bounds
+    before = copy.deepcopy(window.state.recipe)
+    for backgate in (False, True):
+        comparison = ComparisonDialog(window, backgate=backgate)
+        axes = comparison.canvas.figure.axes
+        assert len(axes) == (1 if backgate else 2)
+        if not backgate:
+            axes[0].set_xlim(0, 1)
+            assert axes[1].get_xlim() == (0, 1)
+            comparison.pin()
+            assert comparison.choice.currentData() in window.pinned
+        assert window.state.recipe == before
+        comparison.close()
+
+
+def test_sample_browser_search_flags_preview_and_error_visibility(window, monkeypatch):
+    from agentflow.sample_browser import SampleBrowser
+
+    browser = SampleBrowser(window)
+    browser.timer.stop()
+    original = window.session.get
+    def get(record, recipe):
+        if record["sample_id"] == window.records[1]["sample_id"]:
+            raise ValueError("Missing synthetic input")
+        return original(record, recipe)
+    monkeypatch.setattr(window.session, "get", get)
+    while browser.cursor < len(window.records):
+        browser.load_next()
+        browser.timer.stop()
+    assert browser.table.item(0, 3).data(QtCore.Qt.DecorationRole) is not None
+    assert browser.table.item(1, 5).text() == "Error"
+    assert "Missing synthetic input" in browser.table.item(1, 6).text()
+    browser.search.setText("missing synthetic")
+    assert browser.table.isRowHidden(0)
+    assert not browser.table.isRowHidden(1)
+    browser.search.clear()
+    browser.low_count.setValue(1000000)
+    assert "Low count" in browser.table.item(0, 6).text()
+    browser.table.selectRow(2)
+    browser.open_selected()
+    assert window.record == window.records[2]
+    browser.close()
+
+
+def test_workspace_checkpoint_restore_and_recovery_preserve_saved_file(window, monkeypatch):
+    before = window.state.path.read_bytes()
+    monkeypatch.setattr(W.QInputDialog, "getText", lambda *a, **k: ("baseline", True))
+    window.save_checkpoint()
+    window.upper.setText("3500")
+    window.autosave_pending_fields()
+    assert window.state.recovery_path.exists()
+    assert window.state.path.read_bytes() == before
+    changed = copy.deepcopy(window.state.gate("live"))
+    monkeypatch.setattr(W.QInputDialog, "getItem", lambda *a, **k: ("baseline", True))
+    window.restore_checkpoint()
+    assert window.state.gate("live")["bounds"] != changed["bounds"]
+    window.travel(False)
+    assert window.state.gate("live") == changed
+    assert "Undo" in window.undo_button.text()
+
+
+def test_unfinished_run_and_summary_export_stop_before_file_dialog(window, monkeypatch):
+    window.state.add_draft("not drawn", "live", ["BL1-A", "YL2-A"])
+    def unexpected(*args, **kwargs):
+        pytest.fail("Unfinished analysis must stop before choosing an output path")
+    monkeypatch.setattr(W.QFileDialog, "getExistingDirectory", unexpected)
+    monkeypatch.setattr(W.QFileDialog, "getSaveFileName", unexpected)
+    window.run_analysis()
+    assert "not drawn" in window.message.text()
+    window.export_sample_summary()
+    assert "not drawn" in window.message.text()
