@@ -62,7 +62,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.9,<3.11" },
     { name = "networkx", specifier = ">=3.3" },
     { name = "numpy", specifier = ">=2,<3" },
-    { name = "pandas", specifier = ">=2.2,<3" },
+    { name = "pandas", specifier = ">=2.2,<4" },
     { name = "psutil", specifier = ">=7" },
     { name = "pyarrow", specifier = ">=18" },
     { name = "pyside6", marker = "extra == 'gui'", specifier = ">=6.7,<7" },
