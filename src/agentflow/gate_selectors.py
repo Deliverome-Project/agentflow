@@ -10,6 +10,19 @@ POLYGON_HELP = (
 )
 
 
+def _data_coords(ax, event):
+    """*event*'s position in *ax*'s data coordinates, using public Matplotlib API only.
+
+    Matplotlib 3.11 removed the private ``_SelectorWidget._get_data_coords`` this mirrors.
+    ``event.xdata``/``ydata`` refer to ``event.inaxes``, which is not *ax* when Axes are
+    overlaid, so then invert *ax*'s own transform. The common case avoids that round trip,
+    which can add floating-point error to synthetic events.
+    """
+    if event.inaxes is ax:
+        return (event.xdata, event.ydata)
+    return tuple(ax.transData.inverted().transform((event.x, event.y)))
+
+
 class GatePolygonSelector(PolygonSelector):
     """Add interior dragging and explicit insertion to Matplotlib's polygon tool.
 
@@ -19,10 +32,19 @@ class GatePolygonSelector(PolygonSelector):
 
     insert_mode = False
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # The editors own Escape ("cancel drawing" restores the last completed boundary).
+        # Matplotlib's own Escape binding would then clear that restored polygon: on 3.10
+        # its handler happened to raise before clearing, on 3.11 it completes. PolygonSelector
+        # takes no state_modifier_keys argument, so unbind it here; "not-applicable" is
+        # Matplotlib's own value for an unused modifier (same attribute in 3.10 and 3.11).
+        self._state_modifier_keys["clear"] = "not-applicable"
+
     def _press(self, event):
         if event.dblclick and not self._selection_completed and event.button == 1:
             points = list(self.verts)
-            point = self._get_data_coords(event)
+            point = _data_coords(self.ax, event)
             if not points or not np.allclose(points[-1], point):
                 points.append(point)
             if len(points) >= 3:
@@ -50,7 +72,7 @@ class GatePolygonSelector(PolygonSelector):
                 )
                 distance = ((start + fraction[:, None] * delta - [event.x, event.y]) ** 2).sum(axis=1)
                 points = list(self.verts)
-                points.insert(int(np.argmin(distance)) + 1, self._get_data_coords(event))
+                points.insert(int(np.argmin(distance)) + 1, _data_coords(self.ax, event))
                 self.verts = points
                 self._insert_vertex = True
                 return
@@ -60,7 +82,7 @@ class GatePolygonSelector(PolygonSelector):
             and event.button == 1
             and self._active_handle_idx < 0
             and "move_all" not in self._state
-            and Path(self.verts).contains_point(self._get_data_coords(event))
+            and Path(self.verts).contains_point(_data_coords(self.ax, event))
         ):
             self._state.add("move_all")
             self._interior_move = True
