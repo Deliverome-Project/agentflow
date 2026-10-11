@@ -54,5 +54,9 @@ def write_report(folder, recipe, table, inputs):
 <h2>Unavailable / unmapped gates</h2><ul>{pending or "<li>None</li>"}</ul>
 <p>Default compensation mode: <strong>{escape(recipe["compensation"]["mode"])}</strong>. Sample-sheet matrix assignments override this default; resolved matrices are in run provenance. <a href='recipe.json'>Recipe JSON</a> · <a href='reproducibility.yaml'>Recipe &amp; provenance YAML</a> · <a href='summary.csv'>Results CSV</a> · <a href='events.parquet'>All events (Parquet)</a> · <a href='run.json'>Run provenance</a></p>
 <p>Plot images are embedded for offline viewing. Keep the complete run folder to open linked tables, gates and provenance.</p>
+<h2>Methods and citations</h2>
+<p>Analysis uses Agentflow with a modified FlowKit 1.3.2 engine. Cite the original FlowKit paper in papers, preprints and reports using these results, and identify the Agentflow version or commit from the linked run provenance.</p>
+<p>White S, Quinn J, Enzor J, Staats J, Mosier SM, Almarode J, Denny TN, Weinhold KJ, Ferrari G, Chan C (2021). FlowKit: A Python toolkit for integrated manual and automated cytometry analysis workflows. Frontiers in Immunology 12:768541. <a href="https://doi.org/10.3389/fimmu.2021.768541">doi:10.3389/fimmu.2021.768541</a>.</p>
+<p>Agentflow development used AI coding assistance for code and documentation, including OpenAI Codex for attribution and export changes. This does not describe upstream authors' development practices or establish scientific validation. The human maintainer remains responsible for release decisions and scientific claims.</p>
 <div class='table'>{table.to_html(index=False, escape=True, float_format=lambda x: f"{x:.4g}")}</div>{"".join(sections)}</body></html>"""
     (folder / "report.html").write_text(html)
