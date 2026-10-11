@@ -15,6 +15,30 @@ command line or Python, including by coding agents. A bundled, modified copy of
 > gates are starting points for human review, and synthetic tests do not establish
 > validation for your instrument, controls or assay.
 
+## How to cite
+
+Please cite **FlowKit (White et al., 2021)** when publishing papers, preprints,
+or reports using Agentflow results, alongside Agentflow's version or commit.
+FlowKit provides the underlying analysis engine:
+[doi:10.3389/fimmu.2021.768541](https://doi.org/10.3389/fimmu.2021.768541).
+See [scientific credits and methods wording](CREDITS.md) and
+[CITATION.cff](CITATION.cff) for the full author list and reference.
+
+## AI assistance disclosure
+
+AI coding assistants have been used to help write this package's code and
+documentation. OpenAI Codex assisted with the attribution documentation and
+export changes in this update. This is a disclosure about this package's
+development, not a claim about how the upstream software was written. A complete
+historical inventory of AI tools, model versions, and per-file contributions is
+not maintained. The human maintainer remains responsible for release decisions
+and scientific claims; AI assistance does not establish correctness or imply
+that every contribution has received independent human review.
+
+Validation uses synthetic fixtures and regression tests around the bundled
+FlowKit 1.3.2 engine. These checks do not establish validation for every instrument,
+control, or assay; see [current validation limits](docs/compensation-audit.md).
+
 ## What you can do
 
 - Review hierarchical polygon, rectangle, histogram, Boolean and reporter-ratio

@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "Please cite the original FlowKit paper below when using Agentflow, and identify the Agentflow version or commit."
+title: "Agentflow: reproducible flow cytometry analysis"
+type: software
+repository-code: "https://github.com/Deliverome-Project/agentflow"
+authors:
+  - family-names: Carlson
+    given-names: Rebecca
+references:
+  - type: article
+    title: "FlowKit: A Python toolkit for integrated manual and automated cytometry analysis workflows"
+    authors:
+      - family-names: White
+        given-names: S.
+      - family-names: Quinn
+        given-names: J.
+      - family-names: Enzor
+        given-names: J.
+      - family-names: Staats
+        given-names: J.
+      - family-names: Mosier
+        given-names: S. M.
+      - family-names: Almarode
+        given-names: J.
+      - family-names: Denny
+        given-names: T. N.
+      - family-names: Weinhold
+        given-names: K. J.
+      - family-names: Ferrari
+        given-names: G.
+      - family-names: Chan
+        given-names: C.
+    year: 2021
+    journal: Frontiers in Immunology
+    volume: "12"
+    doi: "10.3389/fimmu.2021.768541"

@@ -111,6 +111,9 @@ def test_batch_replay_and_metadata(tmp_path, recipe):
     html = (tmp_path / "one/report.html").read_text()
     standalone = tmp_path / "standalone.html"
     standalone.write_text(html)
+    assert "10.3389/fimmu.2021.768541" in standalone.read_text()
+    assert "White S, Quinn J" in standalone.read_text()
+    assert "AI coding assistance" in standalone.read_text()
     sources = re.findall(r"<img src='([^']+)'", standalone.read_text())
     assert sources and all(source.startswith("data:image/png;base64,") for source in sources)
     assert base64.b64decode(sources[0].split(",", 1)[1]) == (tmp_path / "one/gates-0001.png").read_bytes()

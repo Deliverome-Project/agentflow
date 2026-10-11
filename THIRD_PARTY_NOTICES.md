@@ -17,6 +17,9 @@ modifications and `UPSTREAM.json` for original file checksums. No upstream
 endorsement is implied. Other installed dependencies retain their own licenses;
 they are not vendored in this repository.
 
+For the original scientific publication, full author list, and citation guidance,
+see [Scientific credits](CREDITS.md).
+
 ## Gating-ML schemas bundled by FlowKit
 
 The three `_resources/*.xsd` files carry separate ISAC copyright notices, which
