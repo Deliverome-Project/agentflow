@@ -98,6 +98,16 @@ agentflow screen runs/01 --gate gfp --metric percent_parent --out screens/01
   logicle uses T=262144, W=0.5, M=4.5, A=0. Actual analysis transformations and their
   explicit parameters remain in the recipe. Histogram binning/normalization remains
   in recipe coordinates during an alternate-axis preview.
+- Axes are fixed per detector, as in FlowJo, so a plot does not move when you
+  flip between samples. The range comes from the detector and its transform,
+  never from the events: linear scatter (FSC/SSC) spans 0 to the instrument
+  range ($PnR); logicle fluorescence spans its full display range (about −111 to
+  T = 262,144 by default). Recipe defaults already follow FlowJo: scatter linear,
+  fluorescence logicle. **Axis ranges…** locks a detector's min/max (signal
+  units) for every sample, or copies the current zoom. Scroll zoom carries across
+  sample changes. **Fit axes to events** restores the old zoom-to-the-central-99%
+  view. These are display settings: gates and counts are unchanged, and events
+  outside the axes still count. Batch QC figures use the same axes.
 - Save stores plot preferences as well as gates; batch QC figures use these
   preferences. Close offers Save/Discard/Cancel for gate changes. Display-only
   preferences are saved when Save is selected.
@@ -217,6 +227,23 @@ method described in [compensation controls](compensation.md), including its
 limitations. A configured uncompensated cleanup recipe is supported and its eligible
 events appear in the preview. Drawing cleanup gates inside this dialog and separate
 unstained negative files are not implemented yet.
+
+## Checking a compensation matrix (N×N plots)
+
+Choose **Analysis → Check compensation (N×N plots)…**. As in FlowJo's matrix
+editor, each compensated detector is plotted against every later one (labelled
+`Comp-<detector>`). **Preview sample** flips through samples; ← / → or Page Up /
+Page Down step without the mouse, and the axes stay fixed. **Population** limits
+the events (default: all events). The detectors button chooses a subset.
+**Overlay uncompensated** draws the same events before compensation on top, in
+coral: residual spillover shows as a diagonal or tilted compensated population,
+and the overlay shows how far the matrix moved each population.
+
+Each sample is shown with its own assigned matrix (sample-sheet
+`compensation_path` assignments included). A sample with no compensation shows
+uncompensated detectors and disables the overlay; the view never infers a matrix.
+Up to 5,000 events per sample are drawn. The view is read only: to change the
+matrix, use **Calculate compensation…** or assign a matrix file.
 
 ## Population hierarchy and guided review
 

@@ -57,12 +57,16 @@ def save_qc(prepared, recipe, masks, path, sample_id):
         ax.set_title(
             f"{gate.get('label', gate['name'])}\n{masks[gate['name']].sum():,} / {masks[gate['parent']].sum():,} — {'reviewed' if gate.get('reviewed') else 'DRAFT'}"
         )
-        from .plot_views import apply_axes, plot_channels
+        from .plot_views import apply_axes, fixed_limits, plot_channels, set_limits
 
+        channels = plot_channels(gate, recipe, view)
+        if not view.get("fit_axes"):
+            # Same axes on every sample's QC page, from the detector range and transform.
+            set_limits(ax, fixed_limits(recipe, channels, prepared.sample, gate), len(channels))
         modes = [
             view.get(key, "Recipe scale").lower().replace(" scale", "") for key in ["x_scale", "y_scale"]
         ]
-        apply_axes(ax, plot_channels(gate, recipe, view), recipe, modes, sample=prepared.sample)
+        apply_axes(ax, channels, recipe, modes, sample=prepared.sample)
     fig.tight_layout()
     fig.savefig(path, dpi=150, facecolor="white")
 
