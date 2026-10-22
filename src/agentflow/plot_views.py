@@ -33,7 +33,13 @@ def density_points(data, limits=None, maximum=20000):
         data = data[((data >= limits[0]) & (data <= limits[1])).all(axis=1)]
     if not len(data):
         return data, np.empty(0)
-    counts, xe, ye = np.histogram2d(data[:, 0], data[:, 1], bins=128)
+    # Bin over the central events, not the axis: fixed full-range axes would
+    # otherwise give a cell cloud a handful of coarse bins. Edge bins absorb the tails.
+    low, high = np.quantile(data, [0.005, 0.995], axis=0)
+    span = np.maximum(high - low, 1e-9)
+    counts, xe, ye = np.histogram2d(
+        data[:, 0], data[:, 1], bins=128, range=list(zip(low - span * 0.02, high + span * 0.02))
+    )
     selected = data[subset_indices(len(data), maximum)]
     x = np.clip(np.searchsorted(xe, selected[:, 0], side="right") - 1, 0, 127)
     y = np.clip(np.searchsorted(ye, selected[:, 1], side="right") - 1, 0, 127)
@@ -300,3 +306,72 @@ def scatter_limits(data, channels, full_range=False):
     low, high = np.quantile(data, [0, 1] if full_range else [0.005, 0.995], axis=0)
     margin = np.maximum((high - low) * 0.08, 1)
     return low - margin, high + margin
+
+
+SCATTER_PREFIXES = ("FSC", "SSC", "BSC")
+DEFAULT_RANGE = 262144.0
+
+
+def instrument_range(sample, channel):
+    """The detector's $PnR, the top of FlowJo's fixed axis; 2^18 when unknown."""
+    try:
+        value = float(sample.channels.iloc[sample.pnn_labels.index(channel)]["pnr"])
+    except (AttributeError, ValueError, KeyError, IndexError, TypeError):
+        return DEFAULT_RANGE
+    return value if np.isfinite(value) and value > 0 else DEFAULT_RANGE
+
+
+def axis_range(recipe, channel, sample=None, locked=None):
+    """Display limits for one parameter in recipe coordinates, never from events.
+
+    A locked range (raw units) wins. Otherwise the top is the logicle T or the
+    instrument range; the bottom is 0 for linear scatter, else the biexponential
+    floor (logicle display 0, about -111 for T = 262144) so negative compensated
+    events stay visible. The same parameter gets the same axis on every sample.
+    """
+    spec = recipe["transforms"][channel]
+    transform = make_transform(spec)
+    if locked is not None:
+        raw = np.asarray(locked, dtype=float)
+    else:
+        if spec["kind"] == "logicle":
+            top = float(spec["parameters"]["param_t"])
+            low = float(transform.inverse(np.array([0.0]))[0])
+        elif spec["kind"] == "linear" and channel.startswith(SCATTER_PREFIXES):
+            top, low = instrument_range(sample, channel), 0.0
+        else:
+            top = instrument_range(sample, channel)
+            floor = make_transform(
+                {"kind": "logicle", "parameters": {"param_t": top, "param_w": 0.5, "param_m": 4.5, "param_a": 0}}
+            )
+            low = float(floor.inverse(np.array([0.0]))[0])
+        raw = np.array([low, top])
+    shown = raw if transform is None else transform.apply(raw)
+    return float(shown[0]), float(shown[1])
+
+
+def fixed_limits(recipe, channels, sample=None, gate=None, locked=None):
+    """(low, high) arrays like scatter_limits, widened only to keep the gate visible."""
+    locked = recipe.get("display", {}).get("axis_ranges", {}) if locked is None else locked
+    low, high = np.array([axis_range(recipe, c, sample, locked.get(c)) for c in channels]).T
+    if gate is not None and gate.get("channels") == list(channels[: len(gate["channels"])]):
+        points = None
+        if gate["kind"] == "polygon":
+            points = np.asarray(gate["vertices"], dtype=float)
+        elif gate["kind"] in ("rectangle", "range"):
+            values = [np.nan if v is None else v for v in gate["bounds"]]
+            points = np.asarray(values, dtype=float).reshape(-1, 2).T
+        if points is not None:
+            for dim in range(min(points.shape[1], len(channels))):
+                finite = points[:, dim][np.isfinite(points[:, dim])]
+                if len(finite):
+                    low[dim], high[dim] = min(low[dim], finite.min()), max(high[dim], finite.max())
+    return low, high
+
+
+def set_limits(ax, limits, dims=2):
+    if limits is None:
+        return
+    ax.set_xlim(limits[0][0], limits[1][0])
+    if dims == 2:
+        ax.set_ylim(limits[0][1], limits[1][1])
