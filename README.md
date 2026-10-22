@@ -55,7 +55,7 @@ control, or assay; see [current validation limits](docs/compensation-audit.md).
 
 ## Installation
 
-Python **3.11 or newer** and [uv](https://docs.astral.sh/uv/) are required for the
+Python **3.14 or newer** and [uv](https://docs.astral.sh/uv/) are required for the
 source-checkout instructions below. The distribution is `agentflow-cytometry`;
 the Python import and executable are `agentflow`. It is not currently published
 on PyPI and is unrelated to other packages named AgentFlow.
