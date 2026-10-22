@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
-          version: "0.11.10"
+          version: "0.13.4"
       - name: Verify all locked artifact ages and hashes before installation
         run: python3 scripts/check_dependency_age.py
       - run: uv sync --locked --group security --group build --extra gui --python ${{ matrix.python }}
@@ -45,7 +45,7 @@ jobs:
         run: /tmp/gitleaks git --redact=100 --log-opts=--all .
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
-          version: "0.11.10"
+          version: "0.13.4"
       - run: python3 scripts/check_dependency_age.py
       - run: uv sync --locked --group build --python 3.12
       - run: uv build --no-build-isolation
