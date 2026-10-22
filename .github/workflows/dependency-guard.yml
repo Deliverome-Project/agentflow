@@ -1,0 +1,17 @@
+# Shared Deliverome dependency guard (Deliverome-Project/.github): no silent downgrades, no
+# versions under 7 days old, and security floors (known-vulnerable versions no lockfile may
+# keep, e.g. certifi < 2026.10.19). Deliberate exceptions go in the PR description:
+#   allow-downgrade: <name>
+#   allow-fresh: <name>
+name: dependency-guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]  # edited: re-check after an allow line
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    uses: Deliverome-Project/.github/.github/workflows/dependency-guard.yml@cce6d1c17ef75f1e39f10b9384ec6e8e67dfd4af # v1
