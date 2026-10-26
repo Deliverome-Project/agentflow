@@ -203,6 +203,30 @@ def test_transform_change_is_shared_and_validated(state, recipe):
     assert state.recipe == recipe and not state.history
 
 
+@pytest.mark.parametrize("w", [0.0, 1.0, 1.5])
+def test_boundaries_on_tied_float32_events_keep_membership(w):
+    """Quantile thresholds often equal an event exactly; round-off must not flip it."""
+    from agentflow import flowkit
+
+    rng = np.random.default_rng(7)
+    raw = np.concatenate([rng.normal(200, 400, 40000), rng.lognormal(9, 1, 40000)]).astype(np.float32)
+    raw = np.repeat(raw, 2)  # Ties, as in float32 FCS exports.
+    old = {"kind": "logicle", "parameters": {"param_t": 2.0**24, "param_w": 0.5, "param_m": 4.5, "param_a": 0}}
+    recipe = {"version": 1, "compensation": {"mode": "none"}, "transforms": {"X": old, "Y": {"kind": "linear"}},
+              "gates": []}
+    sample = flowkit.Sample(np.column_stack([raw, raw]).astype(np.float64), sample_id="ties", channel_labels=["X", "Y"])
+    values = make_transform(old).apply(raw.astype(np.float64))
+    for i, q in enumerate([0.05, 0.3, 0.5, 0.7, 0.95]):
+        low, high = (float(v) for v in np.quantile(values, [q, min(q + 0.2, 0.99)], method="lower"))
+        recipe["gates"] += [
+            {"name": f"low{i}", "parent": "root", "kind": "range", "channels": ["X"], "bounds": [low, None]},
+            {"name": f"band{i}", "parent": "root", "kind": "range", "channels": ["X"], "bounds": [low, high]},
+        ]
+    candidate, _ = retransform(recipe, "X", with_w(recipe, "X", w))
+    changes = count_changes(sample, recipe, candidate)
+    assert all(before == after for before, after in changes.values()), changes
+
+
 def test_skipping_gate_migration_is_caught(recipe, records, monkeypatch):
     """Seeded defect: without migration the same coordinates select different events."""
     monkeypatch.setattr(transform_edit, "migrate_geometry", lambda geometry, *_: {})

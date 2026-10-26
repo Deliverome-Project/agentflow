@@ -19,6 +19,7 @@ from .recipes import validate
 # Fraction of the drawn polygon's extent on each axis.
 POLYGON_TOLERANCE = 1e-4
 MAX_DEPTH = 10
+WINDOW = 256  # ulps searched around a migrated boundary
 NO_GEOMETRY = {"boolean", "ratio"}  # Ratios are gated on raw signal.
 
 
@@ -33,13 +34,66 @@ def converter(old_spec, new_spec):
     return convert
 
 
-def _bounds(bounds, converters):
+def _ordered(value):
+    """Map a float64 to an int64 that sorts identically, for bisection over floats."""
+    bits = np.array([value], dtype=np.float64).view(np.int64)[0]
+    return int(bits) if bits >= 0 else -(int(bits) & 0x7FFFFFFFFFFFFFFF)
+
+
+def _unordered(key):
+    bits = key if key >= 0 else -key | -0x8000000000000000
+    return float(np.array([bits], dtype=np.int64).view(np.float64)[0])
+
+
+def threshold(old_spec, new_spec, value):
+    """New coordinate of a range/rectangle boundary with identical membership.
+
+    Lower bounds are inclusive and upper bounds exclusive, so membership hinges
+    on the smallest raw signal r with old(r) >= value. Inverting ``value``
+    directly is off by round-off, which flips events lying exactly on the
+    boundary (common with float32 FCS data and quantile-derived thresholds).
+    Bisection over float64 finds r; because old() is monotone only to within a
+    few ulps, the new boundary is the smallest new(r) over neighbouring raw
+    values that old() places on or above the boundary.
+    """
+    if old_spec == new_spec:
+        return value
+    old, new = make_transform(old_spec), make_transform(new_spec)
+
+    def apply(transform, raw):
+        return raw if transform is None else float(transform.apply(np.array([raw]))[0])
+
+    guess = value if old is None else float(old.inverse(np.array([value]))[0])
+    if old is not None:
+        step = max(abs(guess) * 1e-9, 1e-9)
+        low, high = guess - step, guess + step
+        while apply(old, low) >= value:
+            low, step = low - step, step * 2
+        while apply(old, high) < value:
+            high, step = high + step, step * 2
+        low, high = _ordered(low), _ordered(high)
+        while high - low > 1:
+            middle = (low + high) // 2
+            if apply(old, _unordered(middle)) >= value:
+                high = middle
+            else:
+                low = middle
+        # FlowKit's logicle is monotone only to within a few ulps, so search
+        # the neighbourhood: every raw value old() puts on or above the
+        # boundary must stay on or above it under new().
+        keys = np.arange(high - WINDOW, high + WINDOW + 1, dtype=np.int64)
+        raws = np.where(keys >= 0, keys, -keys | np.int64(-0x8000000000000000)).view(np.float64)
+        above = raws[old.apply(raws) >= value]
+        moved = above if new is None else new.apply(above)
+        return float(moved.min())
+    return apply(new, guess)
+
+
+def _bounds(bounds, specs):
     """Convert [lo, hi] pairs per channel; null endpoints stay open."""
-    result = []
-    for i, value in enumerate(bounds):
-        forward = converters[i // 2][0]
-        result.append(None if value is None else float(forward(np.array([value]))[0]))
-    return result
+    return [
+        None if value is None else threshold(*specs[i // 2], value) for i, value in enumerate(bounds)
+    ]
 
 
 def _polygon(vertices, converters, tolerance=POLYGON_TOLERANCE):
@@ -82,16 +136,17 @@ def _polygon(vertices, converters, tolerance=POLYGON_TOLERANCE):
     return [[float(x), float(y)] for x, y in result]
 
 
-def migrate_geometry(geometry, converters, tolerance=POLYGON_TOLERANCE):
+def migrate_geometry(geometry, specs, tolerance=POLYGON_TOLERANCE):
     """Migrate one gate's ``bounds``/``vertices`` (a gate or a sample-override patch).
 
-    ``converters`` holds a (forward, backward) pair of functions per gate channel.
+    ``specs`` holds an (old, new) transform pair per gate channel.
     """
     result = {}
     if "vertices" in geometry:
+        converters = [(converter(old, new), converter(new, old)) for old, new in specs]
         result["vertices"] = _polygon(geometry["vertices"], converters, tolerance)
     if "bounds" in geometry:
-        result["bounds"] = _bounds(geometry["bounds"], converters)
+        result["bounds"] = _bounds(geometry["bounds"], specs)
     return result
 
 
@@ -112,20 +167,17 @@ def retransform(recipe, channel, spec, tolerance=POLYGON_TOLERANCE):
     candidate["transforms"][channel] = copy.deepcopy(spec)
     if spec == old_spec:
         return candidate, []
-    convert = converter(old_spec, spec), converter(spec, old_spec)
     names = affected_gates(recipe, channel)
-
-    def same(values):
-        return np.asarray(values, dtype=float)
-
     gates = {g["name"]: g for g in candidate["gates"]}
     for name in names:
         gate = gates[name]
-        converters = [convert if c == channel else (same, same) for c in gate["channels"]]
-        gate.update(migrate_geometry(gate, converters, tolerance))
+        specs = [
+            (old_spec, spec) if c == channel else (recipe["transforms"][c],) * 2 for c in gate["channels"]
+        ]
+        gate.update(migrate_geometry(gate, specs, tolerance))
         for changes in candidate.get("sample_overrides", {}).values():
             if name in changes:
-                changes[name].update(migrate_geometry(changes[name], converters, tolerance))
+                changes[name].update(migrate_geometry(changes[name], specs, tolerance))
     validate(candidate)
     return candidate, names
 
