@@ -1,14 +1,83 @@
-"""Linked quadrant editing and side-by-side control/backgating views."""
+"""Linked quadrant editing, axis ranges and side-by-side control/backgating views."""
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 from PySide6 import QtWidgets as W
 
-from .channel_names import add_detector_choices, select_detector
+from .channel_names import add_detector_choices, channel_label, select_detector
 from .desktop import button, label
 from .engine import make_transform
-from .plot_views import apply_axes, draw_boundary, draw_events, subset_indices
+from .plot_views import apply_axes, axis_range, draw_boundary, draw_events, set_limits, subset_indices
+
+
+class AxisRangesDialog(W.QDialog):
+    """Lock a detector's display range (signal units) for every sample; view only."""
+
+    def __init__(self, window, channels):
+        super().__init__(window)
+        self.window, self.channels = window, list(channels)
+        self.setWindowTitle("Axis ranges")
+        form = W.QFormLayout(self)
+        sample, recipe = window.state.prepared.sample, window.state.recipe
+        self.rows = {}
+        for channel in self.channels:
+            transform = make_transform(recipe["transforms"][channel])
+            default = np.asarray(axis_range(recipe, channel, sample))
+            raw = default if transform is None else transform.inverse(default)
+            locked = window.axis_ranges.get(channel)
+            lock = W.QCheckBox("Lock")
+            spins = []
+            for value in locked or raw:
+                spin = W.QDoubleSpinBox()
+                spin.setRange(-1e12, 1e12)
+                spin.setDecimals(1)
+                spin.setValue(float(value))
+                spin.setEnabled(locked is not None)
+                lock.toggled.connect(spin.setEnabled)
+                spins.append(spin)
+            lock.setChecked(locked is not None)
+            row = W.QHBoxLayout()
+            for widget in (lock, label("min"), spins[0], label("max"), spins[1]):
+                row.addWidget(widget)
+            form.addRow(channel_label(sample, channel), row)
+            self.rows[channel] = (lock, *spins)
+        note = label(
+            "Unlocked axes come from the detector's instrument range and transform (FlowJo defaults: "
+            "linear scatter, biexponential fluorescence), so they never follow the events. A locked "
+            "range applies to every sample. Display only; gates and counts are unchanged.",
+            "muted",
+        )
+        note.setWordWrap(True)
+        form.addRow(note)
+        actions = W.QHBoxLayout()
+        actions.addWidget(button("Use current zoom", self.use_zoom))
+        actions.addStretch()
+        actions.addWidget(button("Cancel", self.reject))
+        actions.addWidget(button("Apply", self.apply, True))
+        form.addRow(actions)
+
+    def use_zoom(self):
+        ax, recipe = self.window.ax, self.window.state.recipe
+        for channel, limits in zip(self.channels, (ax.get_xlim(), ax.get_ylim())):
+            transform = make_transform(recipe["transforms"][channel])
+            raw = np.asarray(limits) if transform is None else transform.inverse(np.asarray(limits))
+            lock, low, high = self.rows[channel]
+            lock.setChecked(True)
+            low.setValue(float(raw[0]))
+            high.setValue(float(raw[1]))
+
+    def apply(self):
+        for channel, (lock, low, high) in self.rows.items():
+            if not lock.isChecked():
+                self.window.axis_ranges.pop(channel, None)
+            elif low.value() >= high.value():
+                W.QMessageBox.warning(self, "Axis ranges", f"{channel}: min must be below max.")
+                return
+            else:
+                self.window.axis_ranges[channel] = [low.value(), high.value()]
+        self.accept()
+        self.window.redraw()
 
 
 class QuadrantDialog(W.QDialog):
@@ -148,6 +217,7 @@ class ComparisonDialog(W.QDialog):
             else [w.record, next(r for r in w.records if r["sample_id"] == self.choice.currentData())]
         )
         axes, arrays = [], []
+        fixed = w.fixed_axes(channels, gate)
         try:
             for i, record in enumerate(records):
                 prepared, masks = w.session.get(record, w.state.recipe)
@@ -158,7 +228,12 @@ class ComparisonDialog(W.QDialog):
                 data = prepared.transformed.loc[masks[gate["parent"]], channels].to_numpy()
                 arrays.append(data)
                 draw_events(
-                    ax, data, channels, "scatter" if self.backgate_mode else "density dots", color="#b0b0b0"
+                    ax,
+                    data,
+                    channels,
+                    "scatter" if self.backgate_mode else "density dots",
+                    color="#b0b0b0",
+                    limits=fixed,
                 )
                 if self.backgate_mode:
                     chosen = prepared.transformed.loc[masks[gate["name"]], channels].to_numpy()
@@ -176,12 +251,13 @@ class ComparisonDialog(W.QDialog):
                     actual["kind"] == "range" and channels[0] == actual["channels"][0]
                 ):
                     draw_boundary(ax, actual, recipe=effective)
+                set_limits(ax, fixed, len(channels))
                 apply_axes(ax, channels, effective, ["recipe", "recipe"], sample=prepared.sample)
                 ax.set_title(
                     f"{record['sample_id']} · {int(masks[gate['name']].sum()):,} selected / {len(data):,} parent"
                 )
             nonempty = [a for a in arrays if len(a)]
-            if nonempty:
+            if fixed is None and nonempty:
                 combined = np.concatenate(nonempty)
                 lo, hi = combined.min(axis=0), combined.max(axis=0)
                 padding = np.maximum((hi - lo) * 0.04, 0.001)

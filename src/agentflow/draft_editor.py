@@ -3,7 +3,7 @@
 from matplotlib.widgets import RectangleSelector, SpanSelector
 
 from .gate_selectors import GatePolygonSelector
-from .plot_views import apply_axes, draw_events
+from .plot_views import apply_axes, draw_events, fixed_limits, set_limits
 
 
 class DraftEditor:
@@ -22,7 +22,12 @@ class DraftEditor:
         self.redraw_gate_button.setEnabled(True)
         channels = draft["channels"][:1] if draft["kind"] == "range" else draft["channels"]
         data = self.state.prepared.transformed.loc[self.state.masks()[draft["parent"]], channels].to_numpy()
-        draw_events(self.ax, data, channels)
+        if hasattr(self, "fixed_axes"):
+            limits = self.fixed_axes(channels)
+        else:
+            limits = fixed_limits(self.state.recipe, channels, self.state.prepared.sample)
+        draw_events(self.ax, data, channels, limits=limits)
+        set_limits(self.ax, limits, len(channels))
         apply_axes(self.ax, channels, self.state.recipe, ["recipe", "recipe"], self.state.prepared.sample)
         if draft["kind"] == "polygon":
             self.selector = GatePolygonSelector(self.ax, self.polygon, useblit=True, grab_range=15)
