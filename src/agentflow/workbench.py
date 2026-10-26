@@ -20,7 +20,16 @@ from .channel_names import (
 )
 from .desktop import TITLES, GateWindow, button, label
 from .engine import make_transform
-from .plot_views import apply_axes, display_spec, draw_boundary, draw_events, plot_channels, scatter_limits
+from .plot_views import (
+    apply_axes,
+    display_spec,
+    draw_boundary,
+    draw_events,
+    fixed_limits,
+    plot_channels,
+    scatter_limits,
+    set_limits,
+)
 from .samples import SampleSession, sample_recipe
 from .workspace_tools import WorkspaceTools
 
@@ -56,6 +65,7 @@ class ScreenWindow(WorkspaceTools, GateWindow):
         self.gates.customContextMenuRequested.connect(self.population_menu)
         analysis_menu.addAction("Detectors…", self.detectors_dialog)
         analysis_menu.addAction("Calculate compensation…", self.compensation_wizard)
+        analysis_menu.addAction("Check compensation (N×N plots)…", self.compensation_matrix_dialog)
         analysis_menu.addAction("Pinned controls…", self.pin_dialog)
         analysis_menu.addAction("Reset selected sample exception", self.reset_exception)
         analysis_button = W.QPushButton("Analysis")
@@ -176,12 +186,15 @@ class ScreenWindow(WorkspaceTools, GateWindow):
             combo.currentIndexChanged.connect(self.redraw)
             axes.addWidget(combo)
         axes.addWidget(button("Use gating axes", self.gating_axes))
-        self.full_scatter = W.QCheckBox("Full scatter range")
-        self.full_scatter.setToolTip(
-            "Unchecked: central 99% view. Off-screen events still count; gates are unchanged."
+        axes.addWidget(button("Axis ranges…", self.axis_ranges_dialog))
+        self.fit_axes = W.QCheckBox("Fit axes to events")
+        self.fit_axes.setToolTip(
+            "Unchecked (FlowJo-style): each detector keeps a fixed axis from its instrument range and "
+            "transform, so plots do not move between samples. Checked: zoom scatter to the central 99% "
+            "of the shown events. Off-screen events still count; gates are unchanged."
         )
-        self.full_scatter.toggled.connect(self.redraw)
-        axes.addWidget(self.full_scatter)
+        self.fit_axes.toggled.connect(self.redraw)
+        axes.addWidget(self.fit_axes)
         self.parent_button = button("↑ Parent", self.select_parent)
         self.parent_button.setToolTip("Select the upstream population")
         self.main_layout.takeAt(0)
@@ -300,7 +313,8 @@ class ScreenWindow(WorkspaceTools, GateWindow):
             self.summary_detector.setCurrentIndex(detector_index)
         self.summary_statistic.setCurrentText(display.get("summary_statistic", "MFI (arithmetic mean)"))
         self.summary_follow.setChecked(display.get("summary_follow", True))
-        self.full_scatter.setChecked(display.get("full_scatter", False))
+        self.axis_ranges = {c: list(v) for c, v in display.get("axis_ranges", {}).items()}
+        self.fit_axes.setChecked(display.get("fit_axes", False))
         self.ready = True
         self.gallery_mode.setCurrentText(display.get("gallery_mode", "Sample MFI"))
         self.focus_plot.setChecked(display.get("focus_plot", False))
@@ -623,8 +637,11 @@ class ScreenWindow(WorkspaceTools, GateWindow):
                     ].to_numpy(),
                 )
             )
+        fixed = self.fixed_axes(channels, gate)
         bins = None
-        if len(channels) == 1:
+        if len(channels) == 1 and fixed is not None:
+            bins = np.linspace(fixed[0][0], fixed[1][0], 101)
+        elif len(channels) == 1:
             arrays = [d[:, 0] for _, d in datasets if len(d)]
             if arrays:
                 lo, hi = min(d.min() for d in arrays), max(d.max() for d in arrays)
@@ -652,10 +669,27 @@ class ScreenWindow(WorkspaceTools, GateWindow):
                 self.opacity.value() / 100,
                 ["count", "area", "peak"][self.normalization.currentIndex()],
                 bins,
-                limits=scatter_limits(data, channels, self.full_scatter.isChecked()),
+                limits=fixed if fixed is not None else scatter_limits(data, channels),
             )
         if len(records) > 1:
             self.ax.legend(fontsize=8, loc="upper right", frameon=False)
+        # Set before selectors read the limits; set_xlim also stops later autoscaling.
+        set_limits(self.ax, fixed, len(channels))
+
+    def fixed_axes(self, channels, gate=None):
+        """Parameter-derived limits shared by every sample, or None when fitting to events."""
+        if self.fit_axes.isChecked():
+            return None
+        return fixed_limits(
+            self.state.recipe, channels, self.state.prepared.sample, gate, getattr(self, "axis_ranges", {})
+        )
+
+    def axis_ranges_dialog(self):
+        from .workspace_dialogs import AxisRangesDialog
+
+        gate = self.state.gate(self.active_name)
+        channels = self.display_channels(gate) if gate else list(self.state.recipe["transforms"])
+        AxisRangesDialog(self, channels).exec()
 
     def finish_plot(self, gate):
         if not self.ready:
@@ -688,14 +722,12 @@ class ScreenWindow(WorkspaceTools, GateWindow):
         show_points = len(channels) == 2 and self.plot_type.currentText() in {"Scatter", "Density dots"}
         self.point_size.setVisible(show_points)
         self.point_size_label.setVisible(show_points)
-        if len(channels) == 2 and all(c.startswith(("FSC-", "SSC-")) for c in channels):
+        if self.fit_axes.isChecked() and len(channels) == 2 and all(c.startswith(("FSC-", "SSC-")) for c in channels):
             arrays = []
             for record in self.plot_records():
                 prepared, masks = self.session.get(record, self.state.recipe)
                 arrays.append(prepared.transformed.loc[masks[gate["parent"]], channels].to_numpy())
-            limits = scatter_limits(
-                np.concatenate(arrays) if arrays else [], channels, self.full_scatter.isChecked()
-            )
+            limits = scatter_limits(np.concatenate(arrays) if arrays else [], channels)
             if limits is not None:
                 self.ax.set_xlim(limits[0][0], limits[1][0])
                 self.ax.set_ylim(limits[0][1], limits[1][1])
@@ -829,7 +861,7 @@ class ScreenWindow(WorkspaceTools, GateWindow):
                     return
                 if isinstance(detector, tuple):
                     self.session.plot_limits(
-                        record, recipe, population, list(detector), self.full_scatter.isChecked()
+                        record, recipe, population, list(detector), self.fit_axes.isChecked()
                     )
                 else:
                     self.session.metrics(record, recipe, population, detector)
@@ -904,7 +936,7 @@ class ScreenWindow(WorkspaceTools, GateWindow):
         self.gallery_range.setText(f"{start + 1 if n else 0}–{start + n} of {len(all_items)} plots")
         shared_limits = None
         active = self.state.gate(self.active_name)
-        if compare and active:
+        if compare and active and self.fit_axes.isChecked():
             limits = []
             for r in all_items:
                 extent = self.session.plot_limits(
@@ -912,7 +944,7 @@ class ScreenWindow(WorkspaceTools, GateWindow):
                     self.state.recipe,
                     active["name"] if active["kind"] == "boolean" else active["parent"],
                     self.display_channels(active),
-                    self.full_scatter.isChecked(),
+                    self.fit_axes.isChecked(),
                 )
                 if extent is not None:
                     limits.append(extent)
@@ -936,9 +968,13 @@ class ScreenWindow(WorkspaceTools, GateWindow):
                 data = prepared.transformed.loc[
                     masks[gate["name"] if gate["kind"] == "boolean" else gate["parent"]], channels
                 ].to_numpy()
-                individual_limits = scatter_limits(data, channels, self.full_scatter.isChecked())
+                fixed = self.fixed_axes(channels, gate)
+                individual_limits = fixed if fixed is not None else scatter_limits(data, channels)
                 density_limits = shared_limits if shared_limits is not None else individual_limits
-                draw_events(ax, data, channels, "density dots", record["color"], limits=density_limits)
+                bins = np.linspace(fixed[0][0], fixed[1][0], 101) if fixed is not None and len(channels) == 1 else None
+                draw_events(
+                    ax, data, channels, "density dots", record["color"], bins=bins, limits=density_limits
+                )
                 draw_boundary(ax, gate, recipe=self.state.recipe)
                 count = int(masks[gate["name"]].sum())
                 total = int(masks[gate["parent"]].sum())
@@ -953,8 +989,7 @@ class ScreenWindow(WorkspaceTools, GateWindow):
                     color="#922038" if gate["name"] == self.active_name else "#141414",
                 )
                 if individual_limits is not None and not shared_limits:
-                    ax.set_xlim(individual_limits[0][0], individual_limits[1][0])
-                    ax.set_ylim(individual_limits[0][1], individual_limits[1][1])
+                    set_limits(ax, individual_limits, len(channels))
                 if shared_limits:
                     for dim, setter in enumerate([ax.set_xlim, ax.set_ylim][: len(channels)]):
                         lo, hi = shared_limits[0][dim], shared_limits[1][dim]
@@ -1218,7 +1253,8 @@ class ScreenWindow(WorkspaceTools, GateWindow):
                 "summary_follow": self.summary_follow.isChecked(),
                 "summary_detector": self.summary_detector.currentData(),
                 "summary_statistic": self.summary_statistic.currentText(),
-                "full_scatter": self.full_scatter.isChecked(),
+                "fit_axes": self.fit_axes.isChecked(),
+                "axis_ranges": getattr(self, "axis_ranges", {}),
                 "plot_type": self.plot_type.currentText(),
                 "range_y_channel": self.range_y.currentData(),
                 "point_size": self.point_size.value(),
@@ -1416,6 +1452,13 @@ class ScreenWindow(WorkspaceTools, GateWindow):
             self.message.setText(f"Removed {len(affected)} population(s). Undo restores them.")
         except (ValueError, KeyError) as error:
             self.message.setText(str(error))
+
+    def compensation_matrix_dialog(self):
+        from .compensation_matrix_dialog import CompensationMatrixDialog
+
+        self.flush_bounds()
+        self.matrix_view = CompensationMatrixDialog(self)
+        self.matrix_view.show()
 
     def scatter_dialog(self):
         from .scatter_viewer import ScatterDialog

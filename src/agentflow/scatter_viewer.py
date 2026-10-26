@@ -6,7 +6,7 @@ from PySide6 import QtWidgets as W
 
 from .channel_names import add_detector_choices, select_detector
 from .desktop import button, label
-from .plot_views import apply_axes, draw_events
+from .plot_views import apply_axes, draw_events, scatter_limits, set_limits
 
 
 class ScatterDialog(W.QDialog):
@@ -42,7 +42,9 @@ class ScatterDialog(W.QDialog):
         layout.addWidget(self.canvas, 1)
         self.count = label("")
         layout.addWidget(self.count)
-        layout.addWidget(label("Axes use the recipe transforms. Exploring does not change gates.", "muted"))
+        layout.addWidget(
+            label("Axes use the recipe transforms and fixed detector ranges. Exploring does not change gates.", "muted")
+        )
         actions = W.QHBoxLayout()
         actions.addWidget(button("Create subpopulation on these axes…", self.create_population, True))
         actions.addWidget(button("Close", self.accept))
@@ -57,7 +59,10 @@ class ScatterDialog(W.QDialog):
         channels = [self.x.currentData(), self.y.currentData()]
         data = prepared.transformed.loc[masks[self.population.currentText()], channels].to_numpy()
         self.ax.clear()
-        draw_events(self.ax, data, channels, self.style.currentText().lower(), w.record["color"])
+        fixed = w.fixed_axes(channels)
+        limits = fixed if fixed is not None else scatter_limits(data, channels)
+        draw_events(self.ax, data, channels, self.style.currentText().lower(), w.record["color"], limits=limits)
+        set_limits(self.ax, fixed)
         apply_axes(self.ax, channels, w.state.recipe, ["recipe", "recipe"], sample=prepared.sample)
         self.count.setText(
             f"{len(data):,} events in {self.population.currentText()} · scatter displays up to 20,000"
