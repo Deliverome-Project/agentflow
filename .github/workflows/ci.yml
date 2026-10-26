@@ -36,7 +36,7 @@ jobs:
       - run: uv sync --locked --group build --python 3.14
       - run: uv build --no-build-isolation
       - run: uv run --locked python scripts/check_release_contents.py
-      - run: uv run --isolated --no-project --python 3.14 --with ./dist/agentflow_cytometry-0.7.1-py3-none-any.whl python scripts/wheel_smoke.py
+      - run: uv run --isolated --no-project --python 3.14 --with ./dist/agentflow_cytometry-0.8.0-py3-none-any.whl python scripts/wheel_smoke.py
   desktop:
     runs-on: ubuntu-latest
     steps:
