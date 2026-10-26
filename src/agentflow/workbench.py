@@ -1333,11 +1333,19 @@ class ScreenWindow(WorkspaceTools, GateWindow):
         wizard = CompensationWizard(self, detectors)
         if wizard.exec() == W.QDialog.Accepted and wizard.spec is not None:
             try:
-                self.flush_bounds()
-                self.state.compensate(wizard.spec)
-                self.show_gate(self.active_name)
+                self.apply_draft_matrix(wizard.spec)
             except (ValueError, OSError, KeyError) as error:
                 self.message.setText(f"Matrix not applied: {error}")
+
+    def apply_draft_matrix(self, spec):
+        """Shared apply step for calculated and edited matrices: one undoable change that resets reviews.
+
+        Sample-sheet compensation_path assignments still take precedence per sample.
+        """
+        self.flush_bounds()
+        self.state.compensate(spec)
+        self.show_gate(self.active_name)
+        self.message.setText("Matrix applied. Review gates in the new compensated space; save to keep it.")
 
     def matrix_dialog(self):
         super().matrix_dialog(allow_import=not bool(self.record.get("compensation_path")))

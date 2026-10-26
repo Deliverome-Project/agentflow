@@ -73,3 +73,10 @@ coverage and remaining limitations.
 
 The setup form scrolls on smaller screens while calculation, review and apply
 actions remain visible. Applying is a draft change; save the analysis to persist it.
+
+To adjust single spillover values by eye, use the N×N check (**Analysis → Check
+compensation (N×N plots)…**). Edits are drawn live with FlowKit and applied as a
+new matrix file through the same step as **Apply draft matrix**; see
+[Editing spillover in the N×N view](screen-workflow.md#editing-spillover-in-the-nn-view).
+Edited matrices keep the original estimate under `edit.base_estimation`; they no
+longer carry `estimation`, because their values are no longer that estimate.
