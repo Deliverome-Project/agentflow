@@ -30,7 +30,7 @@ Gitleaks download is verified against a committed SHA-256 checksum.
   release contents, credential scanning and known-vulnerability auditing.
 - Weekly and manually: repeat age, vulnerability and secret checks on the default
   branch, including newly published vulnerability advisories.
-- Python 3.11 and 3.12 advisory checks cover runtime, GUI, development, build and
+- Python 3.14 advisory checks cover runtime, GUI, development, build and
   audit dependencies applicable to each interpreter. No dependencies are installed
   by the advisory scanner itself. A scanner failure blocks the job.
 - Linux and macOS run the desktop tests with Qt's offscreen backend. This exercises
@@ -59,7 +59,7 @@ specific advisory/artifact. Do not add broad ignores or bypass checks to make a
 release pass. An urgent security update inside the quarantine needs a documented,
 narrowly scoped policy decision, not an automatic exemption.
 
-Main protection requires the original Python/package/desktop jobs plus
-`dependency-security (3.11)`, `dependency-security (3.12)`, `secrets`, and
+Main protection requires `test (3.14)`, `package`, `desktop`, plus
+`dependency-security (3.14)`, `secrets`, and
 `desktop-macos`. Up-to-date branches and resolved conversations remain required;
 admin enforcement, force-push and deletion restrictions are unchanged.
