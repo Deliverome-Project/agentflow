@@ -242,8 +242,51 @@ and the overlay shows how far the matrix moved each population.
 Each sample is shown with its own assigned matrix (sample-sheet
 `compensation_path` assignments included). A sample with no compensation shows
 uncompensated detectors and disables the overlay; the view never infers a matrix.
-Up to 5,000 events per sample are drawn. The view is read only: to change the
-matrix, use **Calculate compensation…** or assign a matrix file.
+Up to 5,000 events per sample are drawn.
+
+### Editing spillover in the N×N view
+
+Below the plots, the spillover table shows the shared recipe matrix in percent:
+the row dye as measured in the column detector (BL1-A → YL2-A = 8.000 means 8% of
+the BL1 dye's signal appears in YL2-A). The diagonal is fixed at 100%. As in
+FlowJo's matrix editor:
+
+- Type a value in a cell, or drag a population on a plot. On `Comp-Y` against
+  `Comp-X`, dragging down raises X → Y (more X signal subtracted from Y);
+  dragging left raises Y → X. A whole-axis drag changes the value by 10
+  percentage points. Short drags are ignored.
+- The plots redraw at once with the draft. FlowKit applies the draft matrix to
+  the raw events, the same code that applies an assigned matrix; the figure says
+  **DRAFT spillover · not applied** and edited cells are shaded, with the assigned
+  value in their tooltip.
+- **Undo edit** (or Ctrl/⌘+Z) steps back one edit; **Reset to assigned matrix**
+  returns to the matrix in the recipe, and Undo can bring the edits back.
+- Population membership in the draft still comes from the assigned matrix. Gates
+  are re-evaluated only once you apply.
+
+Editing needs an explicit matrix in the recipe (from **Calculate compensation…**
+or an imported file). With `fcs` or `none` compensation, the table stays empty
+and nothing is inferred.
+
+Samples with their own sample-sheet `compensation_path` keep that file. Previewing
+one shows its assigned matrix, never the draft, and the note under the table lists
+those samples. To change their matrix, edit the file assigned in the sample sheet.
+
+**Apply edited matrix…** is a separate step. It lists every changed value and the
+samples that keep their own matrix, and then asks for a new JSON file (by default
+`compensation-edited-<date>-<time>.json` next to the recipe). Agentflow refuses
+to write over an existing file, so the assigned matrix and its file stay as they
+were. The new file and the recipe record the edit under `edit`: the fingerprint
+of the matrix it started from (`base_sha256`), each change (`source`, `target`,
+`from`, `to` as fractions), the original estimate's control evidence
+(`base_estimation`) and `reviewed: false`. The recipe copy also records the new
+file's path and SHA-256. Applying goes through the same step as the wizard's
+**Apply draft matrix**: the shared recipe matrix is replaced, every gate review
+is reset, and Undo in the main window reverts it. Save the analysis to keep it.
+
+Manual edits are a judgement on the plots, not an estimate. Prefer re-estimating
+from single-stain controls when they are available, and say in the record why a
+value was changed.
 
 ## Population hierarchy and guided review
 
