@@ -18,9 +18,14 @@ Transforms per PnN channel:
 ```
 
 `linear` is identity; `asinh` is arcsinh(signal/cofactor). Every gate coordinate
-uses the configured transformed space. Changing transforms requires reviewing
-all affected gate coordinates; do not assume old polygons identify the same
-population after a scale change.
+uses the configured transformed space. Editing a transform by hand moves every
+gate on that detector. Use the desktop **Transform…** editor or
+`agentflow.transform_edit.retransform(recipe, channel, spec)` instead: they convert
+each affected gate and sample exception through raw signal so it keeps its signal
+boundaries. Range, rectangle and quadrant membership is unchanged; polygon edges
+are densified (a straight edge in one transform is curved in another) and may
+change membership by a few boundary events, which the editor reports. Review the
+affected gates afterwards; the editor marks them unreviewed.
 
 | Kind | Channels | Shape |
 |---|---|---|

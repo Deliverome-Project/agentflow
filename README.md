@@ -148,7 +148,10 @@ Completed runs use new output directories.
 New fluorescence assignments default to **logicle**, with the upper range taken
 from the detector metadata. Scatter defaults to linear. Existing recipes retain
 their explicit transforms; changing a display preview does not change gate
-membership. Histogram gates default to bounded intervals.
+membership. **Transform…** edits a detector's recipe transform (for example
+logicle W when negatives pile up at zero) and migrates its gates through raw
+signal so they keep their boundaries; see the screen workflow guide. Histogram
+gates default to bounded intervals.
 
 The population gallery supports navigation between gates, and sample comparisons
 use a fixed 2×2 grid. Fluorescence summaries show up to 30 samples per page and can

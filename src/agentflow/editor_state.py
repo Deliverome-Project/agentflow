@@ -7,6 +7,7 @@ from .acquisition import instrument_provenance
 from .engine import digest, evaluate, prepare, save_recipe, validate
 from .overrides import effective_recipe
 from .provenance import save_snapshot
+from .transform_edit import retransform
 from .workflow import add_reporter, mark_unreviewed
 from .workspace_state import WorkspaceState
 
@@ -257,6 +258,16 @@ class EditorState(WorkspaceState):
         candidate["compensation"] = spec
         self.invalidate(candidate)
         self.apply(candidate, True)
+
+    def set_transform(self, channel, spec):
+        """Shared recipe edit: migrate gates through raw signal and require their review."""
+        if self.sample_scope:
+            raise ValueError("Transforms are shared. Select All samples to change a transform.")
+        candidate, migrated = retransform(self.recipe, channel, spec)
+        for name in migrated:
+            self.invalidate(candidate, name)
+        self.apply(candidate, True, label=f"transform {channel}")
+        return migrated
 
     def travel(self, redo=False):
         source, target = (self.future, self.history) if redo else (self.history, self.future)

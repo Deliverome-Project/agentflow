@@ -66,6 +66,7 @@ class ScreenWindow(WorkspaceTools, GateWindow):
         analysis_menu.addAction("Detectors…", self.detectors_dialog)
         analysis_menu.addAction("Calculate compensation…", self.compensation_wizard)
         analysis_menu.addAction("Check compensation (N×N plots)…", self.compensation_matrix_dialog)
+        analysis_menu.addAction("Detector transforms…", lambda: self.transform_dialog())
         analysis_menu.addAction("Pinned controls…", self.pin_dialog)
         analysis_menu.addAction("Reset selected sample exception", self.reset_exception)
         analysis_button = W.QPushButton("Analysis")
@@ -187,6 +188,9 @@ class ScreenWindow(WorkspaceTools, GateWindow):
             axes.addWidget(combo)
         axes.addWidget(button("Use gating axes", self.gating_axes))
         axes.addWidget(button("Axis ranges…", self.axis_ranges_dialog))
+        transform_button = button("Transform…", lambda: self.transform_dialog())
+        transform_button.setToolTip("Edit a detector's recipe transform (logicle T/W/M/A, arcsinh, linear)")
+        axes.addWidget(transform_button)
         self.fit_axes = W.QCheckBox("Fit axes to events")
         self.fit_axes.setToolTip(
             "Unchecked (FlowJo-style): each detector keeps a fixed axis from its instrument range and "
@@ -690,6 +694,18 @@ class ScreenWindow(WorkspaceTools, GateWindow):
         gate = self.state.gate(self.active_name)
         channels = self.display_channels(gate) if gate else list(self.state.recipe["transforms"])
         AxisRangesDialog(self, channels).exec()
+
+    def transform_dialog(self, channel=None):
+        from .transform_dialog import TransformDialog
+
+        if self.state.sample_scope:
+            self.message.setText("Transforms are shared. Select All samples to change a transform.")
+            return None
+        self.flush_bounds()
+        self.transform_view = TransformDialog(self, channel)
+        self.transform_view.preview()
+        self.transform_view.open()
+        return self.transform_view
 
     def finish_plot(self, gate):
         if not self.ready:
