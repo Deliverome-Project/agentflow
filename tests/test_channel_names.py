@@ -3,7 +3,15 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from agentflow.channel_names import CYTOFLEX_ALIASES, channel_annotation, channel_label, instrument_name
+from agentflow import channel_names
+from agentflow.channel_names import (
+    INSTRUMENT_ALIASES,
+    channel_annotation,
+    channel_label,
+    instrument_name,
+    load_instrument_aliases,
+    register_instrument_aliases,
+)
 from agentflow.plot_views import DENSITY, density_points, plot_channels
 
 
@@ -11,14 +19,48 @@ def sample(detectors, names, metadata):
     return SimpleNamespace(pnn_labels=detectors, pns_labels=names, get_metadata=lambda: metadata)
 
 
-@pytest.mark.parametrize("number,alias", CYTOFLEX_ALIASES.items())
+@pytest.fixture
+def aliases(monkeypatch):
+    """Isolate the alias registry and environment for each test."""
+    monkeypatch.setattr(channel_names, "INSTRUMENT_ALIASES", {k: dict(v) for k, v in INSTRUMENT_ALIASES.items()})
+    monkeypatch.setattr(channel_names, "_loaded_files", set())
+    monkeypatch.delenv(channel_names.ALIASES_ENV, raising=False)
+    return channel_names
+
+
+@pytest.mark.parametrize("base,alias", INSTRUMENT_ALIASES["cytoflex"].items())
 @pytest.mark.parametrize("suffix", ["A", "H"])
-def test_supplied_cytoflex_aliases_preserve_detector(number, alias, suffix):
-    detector = f"FL{number}-{suffix}"
+def test_builtin_cytoflex_aliases_preserve_detector(base, alias, suffix):
+    detector = f"{base}-{suffix}"
     s = sample([detector], [""], {"$CYT": "CytoFLEX S"})
     assert channel_label(s, detector) == f"{alias}-{suffix} · {detector}"
-    assert channel_annotation(s, detector)["source"].startswith("User-supplied")
+    assert channel_annotation(s, detector)["source"] == "Configured 'cytoflex' channel alias (not stain confirmation)"
     assert s.pnn_labels == [detector]
+
+
+def test_other_instruments_can_register_aliases(aliases):
+    s = sample(["FL2-A", "FL9-H"], ["", ""], {"$CYT": "Example Sorter 9000"})
+    assert channel_label(s, "FL2-A") == "FL2-A"  # Unknown instruments are not guessed.
+    register_instrument_aliases("example sorter", {"FL2": "PE"})
+    assert channel_label(s, "FL2-A") == "PE-A · FL2-A"
+    assert channel_label(s, "FL9-H") == "FL9-H"
+    cytoflex = sample(["FL2-A"], [""], {"$CYT": "CytoFLEX S"})
+    assert channel_label(cytoflex, "FL2-A") == "KO525-A · FL2-A"  # Registries stay per instrument.
+    for bad in [("", {"FL1": "PE"}), ("x", {}), ("x", {"FL1": ""}), ("x", ["FL1"])]:
+        with pytest.raises(ValueError):
+            register_instrument_aliases(*bad)
+
+
+def test_alias_file_from_environment(aliases, tmp_path, monkeypatch):
+    path = tmp_path / "aliases.yaml"
+    path.write_text("Example Analyzer:\n  BL1: FITC\n  RL1: APC\n")
+    monkeypatch.setenv(aliases.ALIASES_ENV, str(path))
+    s = sample(["BL1-A", "RL1-A"], ["", "Annexin V"], {"cyt": "Example Analyzer II"})
+    assert channel_label(s, "BL1-A") == "FITC-A · BL1-A"
+    assert channel_label(s, "RL1-A") == "Annexin V · RL1-A"  # File metadata wins.
+    path.write_text("[]\n")
+    with pytest.raises(ValueError):
+        load_instrument_aliases(path)
 
 
 def test_ma900_names_are_per_file_metadata_not_a_global_stain_assignment():

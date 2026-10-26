@@ -2,12 +2,12 @@
 
 Benchmarks use deterministic synthetic FCS files, not experimental event data.
 The workload size comes from a read-only inspection of locally available FCS
-headers from Brenna's September 24, 2026 experiments:
+headers from two 96-well screening experiments acquired in September 2026:
 
 | Experiment | Files | Channels | Minimum events | Median events | Maximum events |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| S4E1, FBS lot testing | 46 | 32 | 31,334 | 100,000 | 100,000 |
-| S4E6, detachment methods | 15 | 32 | 67,708 | 100,000 | 100,000 |
+| Screen A | 46 | 32 | 31,334 | 100,000 | 100,000 |
+| Screen B | 15 | 32 | 67,708 | 100,000 | 100,000 |
 
 Both had a 95th percentile of 100,000 events. The benchmark therefore uses
 96 wells × 100,000 events × 32 acquired channels (9.6 million events), with an
@@ -82,7 +82,7 @@ those strings was stopped; it is not included in the after timings.
 These are individual runs on an active workstation, not isolated repeated
 trials or latency guarantees. Tests ran during part of the baseline batch and an isolated package smoke check
 overlapped the start of the final summary scan, so
-its exact speedup should be confirmed on Brenna's workstation. The reproducible
+its exact speedup should be confirmed on a scientist's analysis workstation. The reproducible
 scripts allow the same measurements with different event counts and worker counts.
 
 ## Changes
@@ -228,7 +228,7 @@ It never publishes a partial run. A cancellation arriving after successful
 publication is reported as completed, not as a cancelled/deleted result.
 
 Before claiming production parity, repeat cold and warm trials across multiple
-sessions on Brenna's workstation, measure native input-to-visible-feedback and
+sessions on a scientist's analysis workstation, measure native input-to-visible-feedback and
 peak memory, and compare equivalent FlowJo workflows and outputs. Keep exact
 count/value equality as a release condition; speed must not come from omitting
 samples, weakening compensation or reducing analytical precision.
