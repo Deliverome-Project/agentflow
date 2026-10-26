@@ -1,10 +1,11 @@
-"""FlowJo-style N×N compensation check. Display only: it never estimates or edits a matrix."""
+"""FlowJo-style N×N compensation check. Drawing only: edits live in spillover_edit."""
 
 import numpy as np
 
 from .channel_names import channel_label
 from .engine import make_transform
 from .plot_views import apply_axes, axis_range, subset_indices
+from .spillover_edit import compensate_events
 from .theme import CORAL, INK
 from .workflow import default_transform
 
@@ -27,12 +28,19 @@ def display_recipe(recipe, sample, channels):
     return {**recipe, "transforms": {**recipe["transforms"], **defaults}}
 
 
-def matrix_events(prepared, recipe, channels, mask=None, maximum=DISPLAY_EVENTS):
-    """The same display subset, compensated and uncompensated, in recipe display coordinates."""
+def matrix_events(prepared, recipe, channels, mask=None, maximum=DISPLAY_EVENTS, draft=None):
+    """The same display subset, compensated and uncompensated, in recipe display coordinates.
+
+    With a draft matrix spec, the compensated events come from FlowKit applying
+    that draft to the raw events instead of the sample's assigned matrix.
+    """
     rows = np.arange(len(prepared.values)) if mask is None else np.flatnonzero(np.asarray(mask))
     rows = rows[subset_indices(len(rows), maximum)]
     columns = [prepared.sample.pnn_labels.index(c) for c in channels]
-    compensated = prepared.values[channels].to_numpy(dtype=float)[rows]
+    if draft is None:
+        compensated = prepared.values[channels].to_numpy(dtype=float)[rows]
+    else:
+        compensated = np.asarray(compensate_events(prepared.sample, draft), dtype=float)[rows][:, columns]
     uncompensated = np.asarray(prepared.sample.get_events(source="raw"), dtype=float)[rows][:, columns]
     for k, channel in enumerate(channels):
         transform = make_transform(recipe["transforms"][channel])
@@ -43,13 +51,14 @@ def matrix_events(prepared, recipe, channels, mask=None, maximum=DISPLAY_EVENTS)
 
 
 def draw_compensation_matrix(
-    fig, prepared, recipe, channels, mask=None, overlay=False, locked=None, maximum=DISPLAY_EVENTS
+    fig, prepared, recipe, channels, mask=None, overlay=False, locked=None, maximum=DISPLAY_EVENTS, draft=None
 ):
     """Upper-triangle grid as in FlowJo: row i plots detector i against each later detector.
 
     Axes come from each detector's range and transform (plot_views.axis_range), so
     flipping samples never moves them. The overlay draws the same events before
     compensation, on top, so residual spillover and its correction are visible.
+    A draft matrix spec replaces the assigned matrix for the compensated events.
     Returns {(y_channel, x_channel): axes}.
     """
     fig.clear()
@@ -61,7 +70,7 @@ def draw_compensation_matrix(
         return {}
     sample, matrix = prepared.sample, prepared.matrix
     view = display_recipe(recipe, sample, channels)
-    compensated, uncompensated = matrix_events(prepared, view, channels, mask, maximum)
+    compensated, uncompensated = matrix_events(prepared, view, channels, mask, maximum, draft)
     overlay = overlay and matrix is not None
     locked = locked or {}
     names = {
