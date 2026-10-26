@@ -259,8 +259,8 @@ Plots now default to density-colored dots: blue is sparse and red is dense.
 Threshold gates open against a second detector (usually SSC-A); choose
 **Plot settings → Histogram** for a one-dimensional view, or **Threshold plot Y**
 to change the second axis. Counts always use every event. Axes and selectors show
-FCS stain names alongside the original detector IDs, with the supplied CytoFLEX
-aliases as a fallback. See [channel names and MA900 metadata](docs/channel-labels.md)
+FCS stain names alongside the original detector IDs, with configurable
+per-instrument channel aliases (a CytoFLEX table is built in) as a fallback. See [channel names and MA900 metadata](docs/channel-labels.md)
 and [96-well performance measurements](docs/performance.md).
 
 In **Edit gate** mode, drag inside a rectangle or completed polygon to move the

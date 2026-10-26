@@ -6,18 +6,48 @@ show readable names alongside those IDs. Names are resolved separately for each
 sample, in this order:
 
 1. A nonempty, distinct `$PnS` from that sample's FCS header.
-2. For an instrument whose recorded `$CYT` contains `CytoFLEX`, the laboratory
-   channel aliases supplied with this change, when the detector is `FLn-A` or
-   `FLn-H`.
+2. A configured instrument alias: when the recorded `$CYT` contains a
+   registered instrument name and the detector's base name (its `$PnN` without
+   `-A`, `-H` or `-W`) has an alias.
 3. The original detector ID, with stain identity explicitly unknown in the
    detector-information dialog.
 
-The CytoFLEX fallback is a supplied laboratory configuration, not a universal
-CytoFLEX panel or proof of a stain. File metadata takes precedence. The dialog
-shows the source of every name; unknown instruments do not inherit this mapping.
-No compensation, biological role, or gate is inferred from an alias.
+Aliases are channel names, not proof of a stain. File metadata takes precedence,
+the dialog shows the source of every name, and instruments without a registered
+alias are never guessed. No compensation, biological role, or gate is inferred
+from an alias.
 
-| CytoFLEX detector | Supplied channel alias (A and H) |
+### Adding aliases for another instrument
+
+Agentflow ships one example, a CytoFLEX channel configuration (below). Many
+instruments, including the Sony MA900 (see below), already write `$PnS`, so they
+need no aliases. For an instrument that leaves `$PnS` empty, either register
+aliases from Python:
+
+```python
+from agentflow.channel_names import register_instrument_aliases
+
+register_instrument_aliases("Attune", {"BL1": "FITC", "YL1": "PE", "RL1": "APC"})
+```
+
+or point `AGENTFLOW_CHANNEL_ALIASES` at a YAML or JSON file before starting the
+CLI or desktop app:
+
+```yaml
+# aliases.yaml: instrument name as it appears in $CYT → detector base name → channel name
+Attune:
+  BL1: FITC
+  YL1: PE
+CytoFLEX:  # replaces the built-in table for this instrument
+  FL5: FITC
+```
+
+Instrument names match case-insensitively as a substring of `$CYT`. Registering
+an instrument that already has aliases replaces its whole table. The examples
+above are illustrative, not a recommended panel; use your instrument's own
+configuration.
+
+| CytoFLEX detector | Built-in channel alias (A and H) |
 | --- | --- |
 | FL1 | PB450 |
 | FL2 | KO525 |
@@ -35,7 +65,7 @@ No compensation, biological role, or gate is inferred from an alias.
 
 ## MA900 evidence
 
-A read-only inspection of 18 locally cached S3E9 Sony training FCS exports
+A read-only inspection of 18 locally cached Sony MA900 training FCS exports
 (including FCS 3.1 copies) found `$CYT=LE-MA900FP` and these explicit pairs:
 
 | `$PnN` | `$PnS` |
@@ -45,7 +75,7 @@ A read-only inspection of 18 locally cached S3E9 Sony training FCS exports
 | FL10-A | Alexa Fluor 647-A |
 
 Nineteen earlier cached reporter-experiment files from the same instrument type
-recorded `FL3-A` → `mScarlet3-A`. Historical S3E9 analysis code independently used
+recorded `FL3-A` → `mScarlet3-A`. Historical analysis code for that experiment independently used
 FL1-A for the ALFA probe and FL10-A for the Spy probe. Those biological roles
 belong to that experiment; they are not instrument-wide defaults. These four
 names are therefore read automatically from `$PnS`, not hardcoded onto every

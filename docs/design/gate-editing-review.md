@@ -1,7 +1,7 @@
 # Gate editing and workspace review — October 2026
 
-This review addresses Brenna's gate-type feedback and Maria's polygon-point
-feedback. It compares documented FlowJo v10 workflows, not measured product
+This review addresses user feedback on choosing gate types and editing polygon
+points. It compares documented FlowJo v10 workflows, not measured product
 parity or real-sample validation.
 
 ## Shipped in this change
@@ -38,7 +38,7 @@ the GUI. The polygon edge-distance calculation chooses an editing handle only.
 
 ## Remaining priorities
 
-1. Usability review with Brenna and Maria on representative controls, especially
+1. Usability review with scientists on representative controls, especially
    draft visibility, conversion expectations and trackpad vertex editing.
 2. Clear template/group ownership before adding overlapping analysis groups or
    bulk exception promotion; background loading for individual large FCS files.
