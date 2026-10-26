@@ -11,6 +11,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.request import urlopen
 
+# Exact releases allowed through the seven-day rule because they fix a security issue that
+# cannot wait. Hashes are still verified. Remove each entry once it is a week old.
+# certifi 2026.10.19 and pip 26.2.2 drop the root behind the eMudhra intermediates
+# compromised on 2026-10-19 (https://blog.cloudflare.com/emudhra-certificate-compromise/).
+SECURITY_EXCEPTIONS = {("certifi", "2026.10.19"), ("pip", "26.2.2")}
+
 
 def check_package(package, now, fetch=None):
     source = package["source"]
@@ -36,7 +42,7 @@ def check_package(package, now, fetch=None):
         if record.get("yanked"):
             raise ValueError("Locked artifact is yanked")
         uploaded = datetime.fromisoformat(record["upload_time_iso_8601"])
-        if now - uploaded < timedelta(days=7):
+        if now - uploaded < timedelta(days=7) and (name, version) not in SECURITY_EXCEPTIONS:
             raise ValueError("Locked artifact is less than seven days old")
 
 
