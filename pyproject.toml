@@ -45,4 +45,6 @@ exclude-newer = "7 days"
 exclude-newer-package = { certifi = false, pip = false }
 # Security floors (eMudhra CA compromise, 2026-10-19), also enforced by the shared
 # dependency guard in Deliverome-Project/.github.
-constraint-dependencies = ["certifi>=2026.10.19", "pip>=26.2.2"]
+# Pillow 13 (via matplotlib) and filelock 4.2.1 (via pip-audit's cachecontrol) fix CVEs that
+# dependency-security reports in 12.x and 3.x.
+constraint-dependencies = ["certifi>=2026.10.19", "pip>=26.2.2", "pillow>=13", "filelock>=4.2.1"]
