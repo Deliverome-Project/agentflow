@@ -29,6 +29,7 @@ CLI / Python API              Qt + Matplotlib ScreenWindow
 | `workbench.py` | Multi-sample navigation, population/sample galleries, plate map and overlays |
 | `samples.py` | Sample-sheet validation, group colors, per-sample matrices and bounded preview cache |
 | `plot_views.py` | Shared scatter/density/histogram rendering, original-unit ticks and reversible display axes |
+| `transform_edit.py`, `transform_dialog.py` | Headless transform changes that migrate gates through raw signal; the optional Qt per-detector editor and preview |
 | `compensation_view.py`, `compensation_matrix_dialog.py` | Read-only N×N compensated-detector plots with an uncompensated overlay, and their sample flipper |
 | `screening.py` | Explicit control normalization, plate summaries and well-level descriptive aggregates |
 | `cache.py` | Verified, content-addressed reuse of identical batch outputs |

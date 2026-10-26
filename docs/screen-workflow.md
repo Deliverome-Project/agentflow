@@ -108,6 +108,23 @@ agentflow screen runs/01 --gate gfp --metric percent_parent --out screens/01
   sample changes. **Fit axes to events** restores the old zoom-to-the-central-99%
   view. These are display settings: gates and counts are unchanged, and events
   outside the axes still count. Batch QC figures use the same axes.
+- **Transform…** (beside Axis ranges, or **Analysis → Detector transforms…**)
+  edits a detector's recipe transform, like FlowJo's Customize Axis: linear,
+  biexponential (logicle T, W, M, A) or arcsinh (cofactor). W sets the width of
+  the linear region around zero; raise it when compensated negatives pile up
+  against the bottom of the axis. **Reset to FlowJo default** restores linear
+  scatter or logicle T = $PnR, W = 0.5, M = 4.5, A = 0. The preview shows the
+  selected population on the new axis with migrated gates and, per affected gate,
+  the event count on the current sample before → after. Unlike a display preview,
+  Apply changes the shared recipe for every sample and the batch run. Every gate
+  on that detector, and every sample exception, is converted through raw signal
+  (old inverse, then new forward), so it keeps the same signal boundaries. Range,
+  rectangle and quadrant counts are unchanged because the transforms are
+  monotonic. Polygon edges are subdivided so they follow the drawn edge to 1e-4
+  of the polygon's extent; small count changes can remain and are shown before
+  you apply. Affected gates, their descendants and Boolean dependents need review
+  again. Undo restores the previous transform and gates. Transforms are shared:
+  select **All samples** first. Ratio gates use raw signal and are not changed.
 - Save stores plot preferences as well as gates; batch QC figures use these
   preferences. Close offers Save/Discard/Cancel for gate changes. Display-only
   preferences are saved when Save is selected.

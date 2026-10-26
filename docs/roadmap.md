@@ -9,7 +9,7 @@ are not necessarily implemented yet.
 | Hierarchical gates | Polygon, rectangle, range, linked orthogonal quadrants and AND/OR; native shared engine | Validated ellipse tools if needed |
 | Gate review | Unfinished populations, named Undo, breadcrumbs, display detector exploration, searchable review queue, checkpoints/recovery, linked control comparison and parent highlighting | Validation against representative lab workflows |
 | Compensation | Embedded/imported matrices, interactive single-stain threshold review/calculation, before/after plots | Interactive cleanup gates, separate negative files; alternative estimators validated against lab controls |
-| Fluorescence display | Fixed recipes, original-unit ticks/thresholds, axis display previews | Editable transform parameters and reviewed polygon migration |
+| Fluorescence display | Fixed per-detector axes, original-unit ticks/thresholds, axis display previews, editable transforms (linear/logicle/arcsinh) with raw-signal gate migration and densified polygons | Validate W/T choices and polygon migration on representative lab data |
 | Templates | Shared recipe with explicit sample exceptions, missing-channel failures | Instrument/panel presets |
 | Quality control | Searchable per-sample flags for low counts, empty parents, upper range, backward time and compensation status | Time exclusion gates and assay-specific QC thresholds |
 | Screen reporting | Metadata, plate maps, control normalization, well summaries and explicit hit cutoff | Assay-specific exclusions, dose-response fitting and statistical hit review |
