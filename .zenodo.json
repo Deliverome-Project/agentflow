@@ -1,0 +1,39 @@
+{
+  "upload_type": "software",
+  "title": "Agentflow: reproducible flow cytometry analysis",
+  "description": "<p>Agentflow is a Python toolkit for reproducible flow cytometry analysis, with a command-line interface and an optional desktop gate editor. It is designed for scientists running repeated experiments and screens, especially panels with a few fluorescence channels and straightforward gating.</p><p>Samples and conditions are defined in a CSV sample sheet, gates are reviewed visually, and the analysis is saved as YAML or JSON. The same configuration can be rerun from the command line or Python, including by coding agents. A bundled, modified copy of FlowKit (BSD-3-Clause) provides compensation, transformations and gate hierarchy execution; please also cite the FlowKit paper (White et al., 2021, <a href=\"https://doi.org/10.3389/fimmu.2021.768541\">10.3389/fimmu.2021.768541</a>).</p><p>This is an early evaluation release under active development. Interfaces and configuration formats may change. Generated gates are starting points for human review, and the included tests use synthetic data only; they do not establish validation for any instrument, control set or assay.</p>",
+  "license": "mit",
+  "access_right": "open",
+  "language": "eng",
+  "creators": [
+    {
+      "name": "Carlson, Rebecca J.",
+      "affiliation": "Deliverome Bio, Inc.",
+      "orcid": "0000-0002-5423-9717"
+    }
+  ],
+  "keywords": [
+    "flow cytometry",
+    "cytometry",
+    "gating",
+    "compensation",
+    "FlowKit",
+    "reproducible analysis",
+    "high-throughput screening",
+    "Python"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "10.3389/fimmu.2021.768541",
+      "relation": "references",
+      "resource_type": "publication-article",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "https://github.com/whitews/FlowKit",
+      "relation": "isDerivedFrom",
+      "resource_type": "software",
+      "scheme": "url"
+    }
+  ]
+}
