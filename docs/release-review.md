@@ -5,10 +5,24 @@ Becca Carlson. This designation excludes bundled third-party components.
 The top-level license excludes bundled third-party components; preserve their
 licenses and copyright notices unchanged.
 
-Before changing repository visibility:
+## Current status
+
+The repository is public. Agentflow v0.10.0 (commit `19863da`) was released on
+GitHub on 2026-10-28 and archived on Zenodo:
+
+- Version DOI (v0.10.0): [10.5281/zenodo.23718422](https://doi.org/10.5281/zenodo.23718422)
+- Concept DOI (all versions): [10.5281/zenodo.23718421](https://doi.org/10.5281/zenodo.23718421)
+
+Zenodo archives are permanent. Publication does not resolve the open items
+below, and this document records packaging scope and unresolved provenance,
+not legal clearance.
+
+## Open release items
+
+These items were raised before the visibility change and remain open:
 
 - Resolve legacy biexponential lookup-table provenance: the vendored
-  `_models/transforms/_wsp_transforms.py` describes a port from cytolib and earlier
+  `src/agentflow/_vendor/flowkit/_models/transforms/_wsp_transforms.py` describes a port from cytolib and earlier
   TreeStar code. FlowKit declares BSD-3-Clause, while current cytolib declares
   AGPL-3.0. Determine the exact source version and applicable permissions; do
   not infer either infringement or permission from these labels alone.
@@ -23,8 +37,6 @@ Before changing repository visibility:
   still contain third-party product names. First-party presentation is neutral;
   do not claim the complete repository history is name-free.
 
-The repository remains private while these release questions are resolved.
-This document records packaging scope and unresolved provenance, not legal clearance.
 
 ## MVP candidate checks (2026-09-12)
 
@@ -45,5 +57,6 @@ A private GitHub evaluation release v0.7.0 was subsequently created. That
 immutable release predates the original-code MIT license addition. Its files and
 tag have not been replaced.
 
-Pending for public distribution: resolve or omit legacy compatibility code and
-complete public-history review. Repository visibility remains private.
+These checks are a historical record of the 2026-09-12 candidate, not of
+v0.10.0. The legacy biexponential provenance item above remains unresolved in
+the public release.
