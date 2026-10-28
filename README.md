@@ -21,6 +21,11 @@ Please cite **FlowKit (White et al., 2021)** when publishing papers, preprints,
 or reports using Agentflow results, alongside Agentflow's version or commit.
 FlowKit provides the underlying analysis engine:
 [doi:10.3389/fimmu.2021.768541](https://doi.org/10.3389/fimmu.2021.768541).
+To cite Agentflow itself, use the Zenodo concept DOI, which always resolves to
+the latest archived version:
+[doi:10.5281/zenodo.23718421](https://doi.org/10.5281/zenodo.23718421).
+Each release also has its own version DOI on Zenodo; v0.10.0 is
+[10.5281/zenodo.23718422](https://doi.org/10.5281/zenodo.23718422).
 See [scientific credits and methods wording](CREDITS.md) and
 [CITATION.cff](CITATION.cff) for the full author list and reference.
 

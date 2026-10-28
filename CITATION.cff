@@ -3,6 +3,14 @@ message: "Please cite the original FlowKit paper below when using Agentflow, and
 title: "Agentflow: reproducible flow cytometry analysis"
 type: software
 repository-code: "https://github.com/Deliverome-Project/agentflow"
+doi: "10.5281/zenodo.23718421"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.23718421"
+    description: "Zenodo concept DOI for all Agentflow versions"
+  - type: doi
+    value: "10.5281/zenodo.23718422"
+    description: "Zenodo version DOI for Agentflow v0.10.0"
 authors:
   - family-names: Carlson
     given-names: Rebecca J.
